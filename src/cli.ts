@@ -36,6 +36,7 @@ export function parseArgs(argv: string[]): CliResult {
           dryRun: opts.dryRun,
           resume: opts.resume,
           verbose: opts.verbose,
+          telegram: false,
           approvalMode: opts.approvalMode,
         },
       };

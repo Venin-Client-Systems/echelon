@@ -91,6 +91,7 @@ export class ActionExecutor {
         return `Created issues: ${numbers.map(n => `#${n}`).join(', ')}`;
       }
 
+      case 'invoke_cheenoski':
       case 'invoke_ralphy': {
         const handle = invokeRalphy(
           action.label,
@@ -189,6 +190,8 @@ function describeAction(action: Action): string {
   switch (action.action) {
     case 'create_issues':
       return `Create ${action.issues.length} issue(s): ${action.issues.map(i => i.title).join(', ')}`;
+    case 'invoke_cheenoski':
+      return `Run Cheenoski for label: ${action.label}`;
     case 'invoke_ralphy':
       return `Run Ralphy for label: ${action.label}`;
     case 'update_plan':
