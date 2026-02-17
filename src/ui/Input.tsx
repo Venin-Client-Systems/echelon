@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 
 interface InputProps {
@@ -8,21 +8,35 @@ interface InputProps {
 
 export function Input({ onSubmit, disabled }: InputProps) {
   const [value, setValue] = useState('');
+  const valueRef = useRef('');
+  const isRawSupported = process.stdin.isTTY && typeof process.stdin.setRawMode === 'function';
 
   useInput((input, key) => {
-    if (disabled) return;
-
-    if (key.return) {
-      const trimmed = value.trim();
-      if (trimmed) {
-        onSubmit(trimmed);
-        setValue('');
+    // Collect printable chars (even when disabled, to detect /quit)
+    if (input) {
+      for (const ch of input) {
+        if (ch.charCodeAt(0) >= 32) {
+          valueRef.current += ch;
+        }
       }
+    }
+
+    // Check for submit: key.return (raw \r) OR \n/\r in input (line-buffered/PTY)
+    const hasNewline = input ? (input.includes('\r') || input.includes('\n')) : false;
+    if (key.return || hasNewline) {
+      const trimmed = valueRef.current.trim();
+      valueRef.current = '';
+      setValue('');
+      if (trimmed) onSubmit(trimmed);
       return;
     }
 
+    // When disabled, accept chars silently (for /quit) but don't process further
+    if (disabled) return;
+
     if (key.backspace || key.delete) {
-      setValue(prev => prev.slice(0, -1));
+      valueRef.current = valueRef.current.slice(0, -1);
+      setValue(valueRef.current);
       return;
     }
 
@@ -31,17 +45,26 @@ export function Input({ onSubmit, disabled }: InputProps) {
     if (key.upArrow || key.downArrow || key.leftArrow || key.rightArrow) return;
     if (key.tab) return;
 
-    // Only accept printable characters
-    if (input && input.length === 1 && input.charCodeAt(0) >= 32) {
-      setValue(prev => prev + input);
+    // Update display for non-return input
+    if (input) {
+      setValue(valueRef.current);
     }
-  });
+  }, { isActive: isRawSupported });
 
   if (disabled) {
     return (
       <Box paddingX={1}>
         <Text dimColor>CEO {'>'} </Text>
         <Text dimColor italic>Session ended</Text>
+      </Box>
+    );
+  }
+
+  if (!isRawSupported) {
+    return (
+      <Box paddingX={1}>
+        <Text dimColor>CEO {'>'} </Text>
+        <Text dimColor italic>Input unavailable (no TTY)</Text>
       </Box>
     );
   }

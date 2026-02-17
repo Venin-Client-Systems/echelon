@@ -132,7 +132,7 @@ Each management layer (1-3) is a Claude Code headless session. They reason in na
 }
 ```
 
-Engineers (Layer 4) use [Ralphy](https://github.com/Venin-Client-Systems/echelon/tree/develop/ralphy) — a parallel code execution engine that processes GitHub issues in isolated git worktrees, one branch per task, automatic PR creation.
+Engineers (Layer 4) use [Ralphy](https://github.com/Venin-Client-Systems/echelon/tree/main/ralphy) — a parallel code execution engine that processes GitHub issues in isolated git worktrees, one branch per task, automatic PR creation.
 
 ### Approval Modes
 
@@ -166,7 +166,7 @@ Engineers (Layer 4) use [Ralphy](https://github.com/Venin-Client-Systems/echelon
     "baseBranch": "main"
   },
   "layers": {
-    "2ic":       { "model": "opus",   "maxBudgetUsd": 10.0 },
+    "2ic":       { "model": "opus",   "maxBudgetUsd": 10.0, "maxTurns": 5 },
     "eng-lead":  { "model": "sonnet", "maxBudgetUsd": 5.0 },
     "team-lead": { "model": "sonnet", "maxBudgetUsd": 5.0 }
   },
@@ -182,11 +182,13 @@ Engineers (Layer 4) use [Ralphy](https://github.com/Venin-Client-Systems/echelon
 
 ### Models
 
-| Model | Best For | Cost |
-|-------|----------|------|
-| `opus` | Strategy, complex reasoning (2IC) | $$$ |
-| `sonnet` | Architecture, task breakdown (Eng Lead, Team Lead) | $$ |
-| `haiku` | Fast iteration, simple tasks | $ |
+| Model | Best For | Cost | Default Turns |
+|-------|----------|------|---------------|
+| `opus` | Strategy, complex reasoning (2IC) | $$$ | 5 |
+| `sonnet` | Architecture, task breakdown (Eng Lead, Team Lead) | $$ | 8 |
+| `haiku` | Fast iteration, simple tasks | $ | 12 |
+
+Each layer's `maxTurns` can be overridden in the config. More turns = more file reading and reasoning, but higher cost.
 
 ## CLI Reference
 

@@ -7,8 +7,7 @@
   "layers": {
     "2ic": {
       "model": "opus",
-      "maxBudgetUsd": 10.0,
-      "requiresApproval": true
+      "maxBudgetUsd": 10.0
     },
     "eng-lead": {
       "model": "sonnet",

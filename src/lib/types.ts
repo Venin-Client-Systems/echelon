@@ -2,9 +2,17 @@ import { z } from 'zod';
 
 // --- Config Schemas ---
 
+/** Default max turns by model — haiku needs more turns (less per turn) */
+export const DEFAULT_MAX_TURNS: Record<string, number> = {
+  opus: 5,
+  sonnet: 8,
+  haiku: 12,
+};
+
 export const LayerConfigSchema = z.object({
   model: z.enum(['opus', 'sonnet', 'haiku']).default('sonnet'),
   maxBudgetUsd: z.number().positive().default(5.0),
+  maxTurns: z.number().int().positive().optional(),
   requiresApproval: z.boolean().optional(),
   timeoutMs: z.number().positive().default(300_000),
 });

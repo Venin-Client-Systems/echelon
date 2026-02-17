@@ -2,6 +2,7 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../lib/logger.js';
 import type { ClaudeJsonOutput } from '../lib/types.js';
+import { DEFAULT_MAX_TURNS } from '../lib/types.js';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_TIMEOUT_MS = 600_000; // 10 min — management agents may think long
@@ -25,6 +26,7 @@ export interface SpawnOptions {
   model: string;
   maxBudgetUsd: number;
   systemPrompt: string;
+  maxTurns?: number;
   timeoutMs?: number;
   cwd?: string;
 }
@@ -56,11 +58,12 @@ async function runClaude(args: string[], timeoutMs: number, cwd?: string): Promi
     proc.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
     proc.stderr.on('data', (chunk: Buffer) => errChunks.push(chunk));
 
+    let killTimer: ReturnType<typeof setTimeout> | null = null;
     const timer = setTimeout(() => {
       killed = true;
       proc.kill('SIGTERM');
       // Follow up with SIGKILL if SIGTERM doesn't work
-      setTimeout(() => {
+      killTimer = setTimeout(() => {
         try { proc.kill('SIGKILL'); } catch { /* already dead */ }
       }, SIGKILL_DELAY_MS);
       reject(new Error(`Claude timed out after ${timeoutMs}ms`));
@@ -68,6 +71,7 @@ async function runClaude(args: string[], timeoutMs: number, cwd?: string): Promi
 
     proc.on('close', (code) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       if (killed) return; // already rejected by timeout
       const stdout = Buffer.concat(chunks).toString('utf-8');
       const stderr = Buffer.concat(errChunks).toString('utf-8');
@@ -94,12 +98,31 @@ function parseOutput(stdout: string): ClaudeJsonOutput {
     try {
       const parsed = JSON.parse(lines[i]);
       if (typeof parsed.result === 'string') return parsed;
+      // Handle error_max_turns or other cases where result is missing
+      if (parsed.type === 'result' && parsed.session_id) {
+        return {
+          result: parsed.result ?? `[Agent stopped: ${parsed.subtype ?? 'unknown'}]`,
+          session_id: parsed.session_id,
+          total_cost_usd: parsed.total_cost_usd,
+          duration_ms: parsed.duration_ms,
+          is_error: parsed.is_error ?? true,
+        };
+      }
     } catch { /* not JSON, keep looking */ }
   }
   // Last resort: try parsing the whole thing
   try {
     const parsed = JSON.parse(stdout);
     if (typeof parsed.result === 'string') return parsed;
+    if (parsed.type === 'result' && parsed.session_id) {
+      return {
+        result: parsed.result ?? `[Agent stopped: ${parsed.subtype ?? 'unknown'}]`,
+        session_id: parsed.session_id,
+        total_cost_usd: parsed.total_cost_usd,
+        duration_ms: parsed.duration_ms,
+        is_error: parsed.is_error ?? true,
+      };
+    }
   } catch { /* not JSON */ }
 
   const preview = stdout.slice(0, 300).replace(/\n/g, '\\n');
@@ -112,11 +135,12 @@ export async function spawnAgent(
   opts: SpawnOptions,
 ): Promise<AgentResponse> {
   const start = Date.now();
+  const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS[opts.model] ?? 8;
   const args = [
     '-p', prompt,
     '--output-format', 'json',
     '--model', opts.model,
-    '--max-turns', '1',
+    '--max-turns', String(maxTurns),
     '--append-system-prompt', opts.systemPrompt,
   ];
 
@@ -124,7 +148,7 @@ export async function spawnAgent(
     args.push('--max-budget-usd', opts.maxBudgetUsd.toString());
   }
 
-  logger.debug('Spawning agent', { model: opts.model });
+  logger.debug('Spawning agent', { model: opts.model, maxTurns });
   const stdout = await runClaude(args, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.cwd);
   const output = parseOutput(stdout);
 
@@ -140,17 +164,18 @@ export async function spawnAgent(
 export async function resumeAgent(
   sessionId: string,
   prompt: string,
-  opts: { timeoutMs?: number; cwd?: string },
+  opts: { maxTurns?: number; timeoutMs?: number; cwd?: string },
 ): Promise<AgentResponse> {
   const start = Date.now();
+  const maxTurns = opts.maxTurns ?? 8;
   const args = [
     '-r', sessionId,
     '-p', prompt,
     '--output-format', 'json',
-    '--max-turns', '1',
+    '--max-turns', String(maxTurns),
   ];
 
-  logger.debug('Resuming agent', { sessionId: sessionId.slice(0, 8) });
+  logger.debug('Resuming agent', { sessionId: sessionId.slice(0, 8), maxTurns });
   const stdout = await runClaude(args, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.cwd);
   const output = parseOutput(stdout);
 
