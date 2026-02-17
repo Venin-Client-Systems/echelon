@@ -1,0 +1,29 @@
+{
+  "project": {
+    "repo": "owner/repo",
+    "path": "/absolute/path/to/repo",
+    "baseBranch": "main"
+  },
+  "layers": {
+    "2ic": {
+      "model": "opus",
+      "maxBudgetUsd": 10.0,
+      "requiresApproval": true
+    },
+    "eng-lead": {
+      "model": "sonnet",
+      "maxBudgetUsd": 5.0
+    },
+    "team-lead": {
+      "model": "sonnet",
+      "maxBudgetUsd": 5.0
+    }
+  },
+  "engineers": {
+    "maxParallel": 3,
+    "createPr": true,
+    "prDraft": true
+  },
+  "approvalMode": "destructive",
+  "maxTotalBudgetUsd": 50.0
+}
