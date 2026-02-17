@@ -6,7 +6,7 @@ import type {
   EchelonConfig, EchelonState, LayerMessage,
   AgentRole, LayerId, Action, CliOptions,
 } from '../lib/types.js';
-import { LAYER_LABELS } from '../lib/types.js';
+import { LAYER_LABELS, DEFAULT_MAX_TURNS } from '../lib/types.js';
 import { spawnAgent, resumeAgent } from './agent.js';
 import { MessageBus } from './message-bus.js';
 import { parseActions, stripActionBlocks } from './action-parser.js';
@@ -171,9 +171,11 @@ export class Orchestrator {
 
     try {
       const systemPrompt = buildSystemPrompt(role, this.config);
+      const maxTurns = layerConfig.maxTurns ?? DEFAULT_MAX_TURNS[layerConfig.model] ?? 8;
       const response = await withRetry(
         () => agentState.sessionId
           ? resumeAgent(agentState.sessionId, input, {
+              maxTurns,
               timeoutMs: layerConfig.timeoutMs,
               cwd: this.config.project.path,
             })
@@ -181,6 +183,7 @@ export class Orchestrator {
               model: layerConfig.model,
               maxBudgetUsd: layerConfig.maxBudgetUsd - agentState.totalCost,
               systemPrompt,
+              maxTurns,
               timeoutMs: layerConfig.timeoutMs,
               cwd: this.config.project.path,
             }),

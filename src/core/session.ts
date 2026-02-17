@@ -75,15 +75,20 @@ export function deleteSession(sessionId: string): boolean {
   return true;
 }
 
-/** Delete all completed/failed sessions */
+/** Delete all completed/failed sessions, plus stale running sessions with no messages */
 export function pruneCompletedSessions(): number {
   const sessions = listSessions();
+  const oneHourAgo = Date.now() - 3_600_000;
   let count = 0;
 
   for (const s of sessions) {
-    if (s.status === 'completed' || s.status === 'failed') {
-      if (deleteSession(s.id)) count++;
-    }
+    const prunable =
+      s.status === 'completed' ||
+      s.status === 'failed' ||
+      // Stale running sessions with no messages (crashed before producing anything)
+      (s.status === 'running' && s.messageCount === 0 && new Date(s.updatedAt).getTime() < oneHourAgo);
+
+    if (prunable && deleteSession(s.id)) count++;
   }
 
   return count;

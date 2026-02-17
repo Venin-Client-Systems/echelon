@@ -29,7 +29,7 @@ export function App({ orchestrator, initialDirective }: AppProps) {
     // Parse commands
     if (input === '/quit' || input === '/q') {
       echelon.shutdown();
-      setTimeout(() => exit(), 100);
+      setTimeout(() => { exit(); process.exit(0); }, 200);
       return;
     }
 

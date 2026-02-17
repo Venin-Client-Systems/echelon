@@ -77,7 +77,14 @@ async function runOrchestrator(opts: CliResult & { command: 'run' }): Promise<vo
       }
     }
   } else {
-    // TUI mode — suppress logger output, Ink owns the terminal
+    // TUI mode requires an interactive terminal with raw mode support
+    if (!process.stdin.isTTY) {
+      console.error('Error: TUI mode requires an interactive terminal.');
+      console.error('Use --headless for non-interactive environments, or pipe a directive with -d.');
+      process.exit(1);
+    }
+
+    // Suppress logger output — Ink owns the terminal
     logger.setQuiet(true);
 
     const React = await import('react');

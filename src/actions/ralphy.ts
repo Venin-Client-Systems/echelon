@@ -52,7 +52,7 @@ export function invokeRalphy(
   ];
 
   if (config.engineers.createPr) args.push('--create-pr');
-  if (config.engineers.prDraft) args.push('--pr-draft');
+  if (config.engineers.prDraft) args.push('--draft-pr');
 
   logger.info('Invoking Ralphy', { label, maxParallel: maxParallel ?? config.engineers.maxParallel });
 
