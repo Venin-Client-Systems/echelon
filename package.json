@@ -16,6 +16,7 @@
   "scripts": {
     "build": "tsc && node -e \"const fs=require('fs');const f='dist/index.js';let s=fs.readFileSync(f,'utf8');if(s.startsWith('#!'))s=s.slice(s.indexOf('\\n')+1);fs.writeFileSync(f,'#!/usr/bin/env node\\n'+s);fs.chmodSync(f,0o755)\"",
     "dev": "tsx src/index.ts",
+    "test": "tsx --test src/**/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
