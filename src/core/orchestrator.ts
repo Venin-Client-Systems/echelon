@@ -14,12 +14,38 @@ import { ActionExecutor } from './action-executor.js';
 import { createState, saveState, loadState, updateAgentStatus } from './state.js';
 import { checkLayerBudget, checkTotalBudget, budgetSummary } from './recovery.js';
 
+/**
+ * Options for creating an Orchestrator instance.
+ */
 interface OrchestratorOptions {
+  /** Echelon configuration (layers, budget, approval mode) */
   config: EchelonConfig;
+  /** CLI flags (dryRun, yolo, verbose, etc.) */
   cliOptions: CliOptions;
+  /** Optional pre-existing state for session resumption */
   state?: EchelonState;
 }
 
+/**
+ * Main hierarchical cascade orchestrator for Echelon.
+ *
+ * The Orchestrator runs the full hierarchical cascade:
+ * CEO → 2IC → Eng Lead → Team Lead → Engineers (via Cheenoski).
+ *
+ * It manages budget checks, state persistence, signal handling (SIGINT/SIGTERM),
+ * error recovery, and graceful shutdown. All system events flow through the MessageBus.
+ *
+ * @category Core
+ * @example
+ * ```typescript
+ * const orchestrator = new Orchestrator({
+ *   config: loadConfig('echelon.json'),
+ *   cliOptions: { dryRun: false, yolo: false, directive: '' },
+ * });
+ *
+ * await orchestrator.runCascade('Implement JWT authentication');
+ * ```
+ */
 export class Orchestrator {
   readonly config: EchelonConfig;
   readonly bus: MessageBus;
@@ -82,7 +108,17 @@ export class Orchestrator {
     });
   }
 
-  /** Run the full hierarchical cascade for a directive */
+  /**
+   * Run the full hierarchical cascade for a directive.
+   *
+   * Executes each layer sequentially (CEO → 2IC → Eng Lead → Team Lead),
+   * with budget checks, timeout enforcement, and state persistence.
+   *
+   * Signal handlers (SIGINT/SIGTERM) are installed to ensure graceful shutdown.
+   *
+   * @param directive - High-level directive from the CEO (user)
+   * @throws {Error} If cascade fails unrecoverably
+   */
   async runCascade(directive: string): Promise<void> {
     if (this.cascadeRunning) {
       this.logger.warn('Cascade already running — ignoring duplicate call');
@@ -578,6 +614,14 @@ export class Orchestrator {
   }
 
   /** Graceful shutdown — kills Cheenoski subprocesses, saves state */
+  /**
+   * Gracefully shutdown the orchestrator.
+   *
+   * Terminates all Cheenoski subprocesses, saves state, writes transcript summary,
+   * and removes signal handlers. The session can be resumed later with --resume.
+   *
+   * Called automatically on SIGINT/SIGTERM.
+   */
   shutdown(): void {
     if (this.shuttingDown) return;
     this.shuttingDown = true;
@@ -604,7 +648,13 @@ export class Orchestrator {
     process.exit(0);
   }
 
-  /** For headless approval: approve all pending */
+  /**
+   * Approve all pending actions in sequence.
+   *
+   * Used in headless mode or for batch approval workflows.
+   *
+   * @returns Array of execution results from each approved action
+   */
   async approveAllPending(): Promise<string[]> {
     return this.executor.approveAll();
   }
