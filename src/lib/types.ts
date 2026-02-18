@@ -263,4 +263,5 @@ export type EchelonEvent =
   | { type: 'state_saved'; path: string }
   | { type: 'cascade_complete'; directive: string }
   | { type: 'shutdown'; reason: string }
+  | { type: 'github_rate_limit_exceeded'; state: RateLimitState; resetAt: string }
   | CheenoskiEvent;

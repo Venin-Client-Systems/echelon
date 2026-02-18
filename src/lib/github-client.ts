@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { LRUCache } from 'lru-cache';
 import { logger } from './logger.js';
 import type { RateLimitState } from './types.js';
+import type { MessageBus } from '../core/message-bus.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -67,6 +68,7 @@ export class GitHubClient {
   private cacheStats: CacheStats = { hits: 0, misses: 0 };
   private rateLimitState: RateLimitState | null = null;
   private pausedUntil: number | null = null;
+  private messageBus: MessageBus | null = null;
 
   constructor(
     maxCacheEntries = 500,
@@ -76,6 +78,13 @@ export class GitHubClient {
       max: maxCacheEntries,
       ttl: cacheTtlMs,
     });
+  }
+
+  /**
+   * Set the message bus for event emission (optional).
+   */
+  setMessageBus(bus: MessageBus): void {
+    this.messageBus = bus;
   }
 
   /**
@@ -160,6 +169,15 @@ export class GitHubClient {
         remaining,
         resetAt,
       });
+
+      // Emit circuit breaker event via MessageBus if available
+      if (this.messageBus) {
+        this.messageBus.emitEchelon({
+          type: 'github_rate_limit_exceeded',
+          state: this.rateLimitState,
+          resetAt,
+        });
+      }
     } else if (remaining < 100) {
       logger.warn('GitHub rate limit low', {
         remaining,
