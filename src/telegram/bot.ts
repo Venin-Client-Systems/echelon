@@ -4,9 +4,11 @@ import { logger } from '../lib/logger.js';
 import { handleMessage, hasPendingQuestion, resolvePendingQuestion } from './handler.js';
 import { escapeHtml, splitMessage, formatEventForTelegram } from './notifications.js';
 import { executeCeoTool, onOrchestratorCreated } from './tool-handlers.js';
+import { HealthServer } from './health.js';
 
 let _bot: Bot | null = null;
 let _chatId: string | null = null;
+let _healthServer: HealthServer | null = null;
 
 /** Message queue for serial processing */
 interface QueueItem {
@@ -75,6 +77,9 @@ export function createTelegramBot(config: EchelonConfig): Bot {
       if (!text) return;
       logger.debug('Telegram message received', { text: text.slice(0, 80) });
 
+      // Record activity for health check
+      _healthServer?.recordActivity();
+
       // If there's a pending ask_user question, resolve it instead of starting new handleMessage
       if (hasPendingQuestion()) {
         const resolved = resolvePendingQuestion(text);
@@ -90,12 +95,14 @@ export function createTelegramBot(config: EchelonConfig): Bot {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error('Telegram handler error', { error: msg });
+        _healthServer?.recordError();
         await sendTelegramMessage(`Error: ${escapeHtml(msg)}`);
       }
     } catch (err) {
       logger.error('Fatal message handler error', {
         error: err instanceof Error ? err.message : String(err),
       });
+      _healthServer?.recordError();
     }
   });
 
@@ -249,6 +256,19 @@ export async function startBot(config: EchelonConfig): Promise<void> {
   const bot = createTelegramBot(config);
   logger.info('Starting Telegram bot...');
 
+  // Start health server if configured
+  if (config.telegram.health?.enabled) {
+    _healthServer = new HealthServer(config.telegram.health);
+    try {
+      await _healthServer.start();
+    } catch (err) {
+      logger.error('Failed to start health server', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  }
+
   // Send online notification
   await sendTelegramMessage('Echelon CEO AI online. Ready for directives.');
 
@@ -290,6 +310,16 @@ export async function startBot(config: EchelonConfig): Promise<void> {
     try {
       logger.info('Shutting down Telegram bot...');
       await sendTelegramMessage('Echelon going offline.').catch(() => {});
+
+      // Stop health server if running
+      if (_healthServer) {
+        await _healthServer.stop().catch((err) => {
+          logger.error('Failed to stop health server', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
+
       bot.stop();
     } catch (err) {
       logger.error('Shutdown error', {
