@@ -29,6 +29,18 @@ export const EngineersConfigSchema = z.object({
   prDraft: z.boolean().default(true),
 });
 
+export const TelegramHealthConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  port: z.number().int().min(1).max(65535).default(3000),
+  bindAddress: z.string().default('0.0.0.0'),
+});
+
+export const TelegramConfigSchema = z.object({
+  token: z.string(),
+  allowedUserIds: z.array(z.number().int()).default([]),
+  health: TelegramHealthConfigSchema.optional(),
+});
+
 export const EchelonConfigSchema = z.object({
   project: ProjectConfigSchema,
   layers: z.object({
@@ -39,12 +51,15 @@ export const EchelonConfigSchema = z.object({
   engineers: EngineersConfigSchema.default({}),
   approvalMode: z.enum(['destructive', 'all', 'none']).default('destructive'),
   maxTotalBudgetUsd: z.number().positive().default(50.0),
+  telegram: TelegramConfigSchema.optional(),
 });
 
 export type EchelonConfig = z.infer<typeof EchelonConfigSchema>;
 export type LayerConfig = z.infer<typeof LayerConfigSchema>;
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
 export type EngineersConfig = z.infer<typeof EngineersConfigSchema>;
+export type TelegramHealthConfig = z.infer<typeof TelegramHealthConfigSchema>;
+export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
 
 // --- Layer Types ---
 
