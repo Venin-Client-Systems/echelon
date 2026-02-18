@@ -156,7 +156,43 @@ Layer 3: Team Lead (AI)  ─── Issue creation, sprint management, PR review
 Layer 4: Engineers (AI)  ─── Code execution in parallel git worktrees
 ```
 
-Each management layer (1-3) is a Claude Code headless session. They reason in natural language and emit structured JSON action blocks:
+```mermaid
+graph TD
+    Start([CEO Directive]) --> Budget{Budget<br/>Available?}
+    Budget -->|No| Stop([Abort: Budget Exceeded])
+    Budget -->|Yes| 2IC[2IC: Strategic Planning]
+
+    2IC --> Validate2IC{Valid<br/>Output?}
+    Validate2IC -->|No| Fail2IC([Cascade Failed])
+    Validate2IC -->|Yes| Lead[Eng Lead: Technical Design]
+
+    Lead --> ValidateLead{Valid<br/>Output?}
+    ValidateLead -->|No| FailLead([Cascade Failed])
+    ValidateLead -->|Yes| InfoReq{Info<br/>Requests?}
+
+    InfoReq -->|Yes| Loopback[Resume Upstream for Answers]
+    Loopback --> TeamLead
+    InfoReq -->|No| TeamLead[Team Lead: Execution]
+
+    TeamLead --> ValidateTL{Valid<br/>Output?}
+    ValidateTL -->|No| FailTL([Cascade Failed])
+    ValidateTL -->|Yes| Pending{Pending<br/>Approvals?}
+
+    Pending -->|Yes| WaitApproval[Log Pending Actions]
+    Pending -->|No| Complete([Cascade Complete])
+    WaitApproval --> Complete
+
+    style Start fill:#e1f5e1
+    style Complete fill:#e1f5e1
+    style Stop fill:#ffe1e1
+    style Fail2IC fill:#ffe1e1
+    style FailLead fill:#ffe1e1
+    style FailTL fill:#ffe1e1
+```
+
+Each management layer (1-3) is a Claude Code headless session. They reason in natural language and emit structured JSON action blocks.
+
+For detailed architecture diagrams including action lifecycle, scheduler state machine, and error handling flows, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ```json
 {
