@@ -2,12 +2,28 @@ import { ActionSchema, type Action } from '../lib/types.js';
 import { logger } from '../lib/logger.js';
 
 /**
- * Extract JSON action blocks from agent response text.
- * Looks for ```json ... ``` fenced blocks containing action objects.
+ * Extract and validate JSON action blocks from agent response text.
  *
- * Handles the case where JSON values contain embedded triple backticks
- * (e.g. code examples in issue bodies) by trying progressively longer
+ * Looks for ` ```json ... ``` ` fenced blocks containing action objects.
+ * Handles edge cases like embedded triple backticks in JSON values
+ * (e.g., code examples in issue bodies) by trying progressively longer
  * matches until JSON.parse succeeds.
+ *
+ * @category Core
+ * @param text - Raw agent response text
+ * @returns Object containing parsed actions and validation errors
+ * @example
+ * ```typescript
+ * const response = `
+ * Here's my plan:
+ * \`\`\`json
+ * {"action": "update_plan", "plan": "Implement auth"}
+ * \`\`\`
+ * `;
+ *
+ * const { actions, errors } = parseActions(response);
+ * console.log(actions); // [{ action: 'update_plan', plan: '...' }]
+ * ```
  */
 export function parseActions(text: string): { actions: Action[]; errors: string[] } {
   const actions: Action[] = [];
@@ -75,8 +91,26 @@ export function parseActions(text: string): { actions: Action[]; errors: string[
 }
 
 /**
- * Strip action blocks from text to get the narrative portion.
- * Uses the same progressive matching as parseActions to handle embedded backticks.
+ * Remove action blocks from text to extract the narrative portion.
+ *
+ * Uses the same progressive matching as parseActions to correctly handle
+ * embedded backticks in JSON strings. Cleans up excessive newlines.
+ *
+ * @param text - Raw agent response text with action blocks
+ * @returns Text with all action blocks removed
+ * @example
+ * ```typescript
+ * const response = `
+ * I'll create issues:
+ * \`\`\`json
+ * {"action": "create_issues", "issues": [...]}
+ * \`\`\`
+ * This is my reasoning.
+ * `;
+ *
+ * const narrative = stripActionBlocks(response);
+ * console.log(narrative); // "I'll create issues:\n\nThis is my reasoning."
+ * ```
  */
 export function stripActionBlocks(text: string): string {
   let result = text;

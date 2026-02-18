@@ -1,0 +1,397 @@
+<!DOCTYPE html><html class="default" lang="en" data-base="./"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>Echelon API Documentation - v0.1.0</title><meta name="description" content="Documentation for Echelon API Documentation"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="assets/style.css"/><link rel="stylesheet" href="assets/highlight.css"/><script defer src="assets/main.js"></script><script async src="assets/icons.js" id="tsd-icons-script"></script><script async src="assets/search.js" id="tsd-search-script"></script><script async src="assets/navigation.js" id="tsd-nav-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar"><div class="tsd-toolbar-contents container"><a href="index.html" class="title">Echelon API Documentation - v0.1.0</a><div id="tsd-toolbar-links"></div><button id="tsd-search-trigger" class="tsd-widget" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-search"></use></svg></button><dialog id="tsd-search" aria-label="Search"><input role="combobox" id="tsd-search-input" aria-controls="tsd-search-results" aria-autocomplete="list" aria-expanded="true" autocapitalize="off" autocomplete="off" placeholder="Search the docs" maxLength="100"/><ul role="listbox" id="tsd-search-results"></ul><div id="tsd-search-status" aria-live="polite" aria-atomic="true"><div>Preparing search index...</div></div></dialog><a href="#" class="tsd-widget menu" id="tsd-toolbar-menu-trigger" data-toggle="menu" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-menu"></use></svg></a></div></header><div class="container container-main"><div class="col-content"><div class="tsd-page-title"><h1>Echelon API Documentation - v0.1.0</h1></div><div class="tsd-panel tsd-typography"><p align="center">
+  <h1 align="center">Echelon</h1>
+  <p align="center">
+    <strong>A hierarchical multi-agent AI orchestrator that turns a single directive into a full engineering org.</strong>
+  </p>
+  <p align="center">
+    <a href="#installation">Installation</a> &middot;
+    <a href="#quick-start">Quick Start</a> &middot;
+    <a href="#how-it-works">How It Works</a> &middot;
+    <a href="#configuration">Configuration</a> &middot;
+    <a href="#cli-reference">CLI Reference</a>
+  </p>
+</p>
+<hr>
+<p>You give a directive. Echelon builds the team, plans the work, creates GitHub issues, writes the code, opens PRs, and asks you to approve along the way.</p>
+<pre><code><span class="hl-0">CEO</span><span class="hl-1"> (</span><span class="hl-2">you</span><span class="hl-1">)</span><br/><span class="hl-1">  </span><span class="hl-3">&quot;Build JWT auth with refresh tokens&quot;</span><br/><span class="hl-1">    └─ 2</span><span class="hl-4">IC</span><span class="hl-1">          → </span><span class="hl-2">breaks</span><span class="hl-1"> </span><span class="hl-2">directive</span><span class="hl-1"> </span><span class="hl-2">into</span><span class="hl-1"> </span><span class="hl-2">workstreams</span><br/><span class="hl-1">        └─ </span><span class="hl-2">Eng</span><span class="hl-1"> </span><span class="hl-2">Lead</span><span class="hl-1">  → </span><span class="hl-2">designs</span><span class="hl-1"> </span><span class="hl-2">architecture</span><span class="hl-1">, </span><span class="hl-2">defines</span><span class="hl-1"> </span><span class="hl-2">tasks</span><br/><span class="hl-1">            └─ </span><span class="hl-2">Team</span><span class="hl-1"> </span><span class="hl-2">Lead</span><span class="hl-1"> → </span><span class="hl-2">creates</span><span class="hl-1"> </span><span class="hl-2">GitHub</span><span class="hl-1"> </span><span class="hl-2">issues</span><span class="hl-1">, </span><span class="hl-2">invokes</span><span class="hl-1"> </span><span class="hl-2">engineers</span><br/><span class="hl-1">                └─ </span><span class="hl-0">Engineers</span><span class="hl-1"> (</span><span class="hl-2">parallel</span><span class="hl-1">) → </span><span class="hl-2">write</span><span class="hl-1"> </span><span class="hl-2">code</span><span class="hl-1">, </span><span class="hl-2">open</span><span class="hl-1"> </span><span class="hl-2">PRs</span>
+</code><button>Copy</button></pre>
+
+<p>No agents to configure. No prompt chains to debug. One command.</p>
+<h2 id="what-it-does" class="tsd-anchor-link">What It Does<a href="#what-it-does" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<ul>
+<li><strong>Hierarchical planning</strong> — A directive cascades through AI management layers (2IC → Eng Lead → Team Lead) before any code is written. Each layer adds specificity.</li>
+<li><strong>Parallel code execution</strong> — Engineers run in isolated git worktrees with a sliding-window scheduler. Three engineers by default, configurable.</li>
+<li><strong>GitHub-native</strong> — Issues are created, branches are cut, PRs are opened and reviewed. Everything lives in your repo.</li>
+<li><strong>Human-in-the-loop</strong> — Approval gates let you review destructive actions (issue creation, code execution) before they happen. Or go full auto.</li>
+<li><strong>Budget controls</strong> — Per-layer and total spending limits. The system stops when the budget runs out, not when your wallet does.</li>
+<li><strong>Terminal UI</strong> — Real-time org chart, activity feed, issue tracker, and cost dashboard. Or run headless for CI/automation.</li>
+<li><strong>Session persistence</strong> — Save state, resume later. Agent context carries over via Claude session IDs.</li>
+<li><strong>Zero-config auto-discovery</strong> — Just <code>cd</code> into any git repo and run <code>echelon</code>. It detects your project and gets you started.</li>
+</ul>
+<h2 id="prerequisites" class="tsd-anchor-link">Prerequisites<a href="#prerequisites" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Required</th>
+<th>Install</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Node.js</strong></td>
+<td>v20+</td>
+<td><a href="https://nodejs.org">nodejs.org</a></td>
+</tr>
+<tr>
+<td><strong>Claude CLI</strong></td>
+<td>Authenticated</td>
+<td><code>npm i -g @anthropic-ai/claude-code &amp;&amp; claude login</code></td>
+</tr>
+<tr>
+<td><strong>GitHub CLI</strong></td>
+<td>Authenticated</td>
+<td><a href="https://cli.github.com">cli.github.com</a> → <code>gh auth login</code></td>
+</tr>
+<tr>
+<td><strong>Git</strong></td>
+<td>Any recent version</td>
+<td><a href="https://git-scm.com">git-scm.com</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="installation" class="tsd-anchor-link">Installation<a href="#installation" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<pre><code class="bash"><span class="hl-5"># Clone the repo</span><br/><span class="hl-0">git</span><span class="hl-1"> </span><span class="hl-3">clone</span><span class="hl-1"> </span><span class="hl-3">https://github.com/Venin-Client-Systems/echelon.git</span><br/><span class="hl-0">cd</span><span class="hl-1"> </span><span class="hl-3">echelon</span><br/><br/><span class="hl-5"># Install dependencies and build</span><br/><span class="hl-0">npm</span><span class="hl-1"> </span><span class="hl-3">install</span><br/><span class="hl-0">npm</span><span class="hl-1"> </span><span class="hl-3">run</span><span class="hl-1"> </span><span class="hl-3">build</span><br/><br/><span class="hl-5"># Link globally (makes `echelon` available anywhere)</span><br/><span class="hl-0">npm</span><span class="hl-1"> </span><span class="hl-3">link</span>
+</code><button type="button">Copy</button></pre>
+
+<h2 id="quick-start" class="tsd-anchor-link">Quick Start<a href="#quick-start" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<h3 id="just-run-it" class="tsd-anchor-link">Just run it<a href="#just-run-it" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Navigate to any git repo and run:</p>
+<pre><code class="bash"><span class="hl-0">cd</span><span class="hl-1"> </span><span class="hl-3">~/projects/my-app</span><br/><span class="hl-0">echelon</span>
+</code><button type="button">Copy</button></pre>
+
+<p><strong>First time?</strong> Echelon auto-detects your git remote and offers a quick setup:</p>
+<pre><code><span class="hl-2">No</span><span class="hl-1"> </span><span class="hl-2">config</span><span class="hl-1"> </span><span class="hl-2">found</span><span class="hl-1">. </span><span class="hl-2">Detected</span><span class="hl-1">: </span><span class="hl-2">your</span><span class="hl-1">-</span><span class="hl-2">org</span><span class="hl-1">/</span><span class="hl-2">my</span><span class="hl-1">-</span><span class="hl-2">app</span><br/><span class="hl-2">Run</span><span class="hl-1"> </span><span class="hl-2">quick</span><span class="hl-1"> </span><span class="hl-2">setup</span><span class="hl-1">? [</span><span class="hl-4">Y</span><span class="hl-1">/</span><span class="hl-2">n</span><span class="hl-1">]</span><br/><br/><span class="hl-2">Approval</span><span class="hl-1"> </span><span class="hl-2">mode</span><span class="hl-1"> [</span><span class="hl-2">destructive</span><span class="hl-1">/</span><span class="hl-2">all</span><span class="hl-1">/</span><span class="hl-2">none</span><span class="hl-1">] (</span><span class="hl-2">destructive</span><span class="hl-1">):</span><br/><br/><span class="hl-1">  ✓ </span><span class="hl-2">Config</span><span class="hl-1"> </span><span class="hl-2">written</span><span class="hl-1"> </span><span class="hl-2">to</span><span class="hl-1"> /</span><span class="hl-2">Users</span><span class="hl-1">/</span><span class="hl-2">you</span><span class="hl-1">/</span><span class="hl-2">projects</span><span class="hl-1">/</span><span class="hl-2">my</span><span class="hl-1">-</span><span class="hl-2">app</span><span class="hl-1">/</span><span class="hl-2">echelon</span><span class="hl-1">.</span><span class="hl-2">config</span><span class="hl-1">.</span><span class="hl-2">json</span>
+</code><button>Copy</button></pre>
+
+<p>One question, one file, and the TUI launches immediately. That's it.</p>
+<p><strong>Already set up?</strong> Echelon finds your config automatically and launches the TUI. No flags needed.</p>
+<h3 id="headless-mode" class="tsd-anchor-link">Headless mode<a href="#headless-mode" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Run a directive without the TUI — great for CI, scripts, or quick one-offs:</p>
+<pre><code class="bash"><span class="hl-0">echelon</span><span class="hl-1"> </span><span class="hl-6">-d</span><span class="hl-1"> </span><span class="hl-3">&quot;Add input validation to all API endpoints&quot;</span><span class="hl-1"> </span><span class="hl-6">--headless</span>
+</code><button type="button">Copy</button></pre>
+
+<p>If no config exists, Echelon generates sensible defaults in-memory and runs immediately (no file written). You'll see a note to run <code>echelon init</code> to customize.</p>
+<h3 id="dry-run" class="tsd-anchor-link">Dry run<a href="#dry-run" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>See what Echelon <em>would</em> do without any side effects:</p>
+<pre><code class="bash"><span class="hl-0">echelon</span><span class="hl-1"> </span><span class="hl-6">-d</span><span class="hl-1"> </span><span class="hl-3">&quot;Refactor auth into a service layer&quot;</span><span class="hl-1"> </span><span class="hl-6">--dry-run</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="full-setup-wizard" class="tsd-anchor-link">Full setup wizard<a href="#full-setup-wizard" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>For fine-grained control over models, budgets, and safety settings:</p>
+<pre><code class="bash"><span class="hl-0">echelon</span><span class="hl-1"> </span><span class="hl-3">init</span>
+</code><button type="button">Copy</button></pre>
+
+<p>This walks you through:</p>
+<ul>
+<li>Prerequisite checks (Node, Git, Claude CLI, GitHub CLI)</li>
+<li>Project detection (auto-reads your git remote)</li>
+<li>Model selection per management layer</li>
+<li>Budget and safety configuration</li>
+</ul>
+<h3 id="explicit-config-path" class="tsd-anchor-link">Explicit config path<a href="#explicit-config-path" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>For non-standard config locations or multi-project setups:</p>
+<pre><code class="bash"><span class="hl-0">echelon</span><span class="hl-1"> </span><span class="hl-6">--config</span><span class="hl-1"> </span><span class="hl-3">~/configs/my-project.json</span>
+</code><button type="button">Copy</button></pre>
+
+<h2 id="config-discovery" class="tsd-anchor-link">Config Discovery<a href="#config-discovery" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>When you run <code>echelon</code> without <code>--config</code>, it searches for <code>echelon.config.json</code> in this order:</p>
+<ol>
+<li><strong>Current directory</strong> — <code>./echelon.config.json</code></li>
+<li><strong>Git root</strong> — If you're in a subdirectory, checks the repo root</li>
+<li><strong>Global config</strong> — <code>~/.echelon/configs/&lt;repo-name&gt;.json</code></li>
+</ol>
+<p>If no config is found:</p>
+<table>
+<thead>
+<tr>
+<th>Context</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Interactive terminal</strong></td>
+<td>Prompts to run quick setup (one question, writes config, launches TUI)</td>
+</tr>
+<tr>
+<td><strong>Headless / non-TTY</strong></td>
+<td>Generates in-memory defaults and runs (no file written)</td>
+</tr>
+<tr>
+<td><strong>Not a git repo</strong></td>
+<td>Prints error, suggests <code>--config</code> flag</td>
+</tr>
+</tbody>
+</table>
+<h2 id="how-it-works" class="tsd-anchor-link">How It Works<a href="#how-it-works" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<h3 id="the-cascade" class="tsd-anchor-link">The Cascade<a href="#the-cascade" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<pre><code><span class="hl-2">Layer</span><span class="hl-1"> </span><span class="hl-7">0</span><span class="hl-1">: </span><span class="hl-0">CEO</span><span class="hl-1"> (</span><span class="hl-2">Human</span><span class="hl-1">)     ─── </span><span class="hl-4">TUI</span><span class="hl-1"> </span><span class="hl-2">input</span><span class="hl-1">, </span><span class="hl-2">approvals</span><span class="hl-1">, </span><span class="hl-2">overrides</span><br/><span class="hl-2">Layer</span><span class="hl-1"> </span><span class="hl-7">1</span><span class="hl-1">: 2</span><span class="hl-0">IC</span><span class="hl-1"> (</span><span class="hl-4">AI</span><span class="hl-1">)        ─── </span><span class="hl-2">Strategy</span><span class="hl-1">, </span><span class="hl-2">prioritization</span><span class="hl-1">, </span><span class="hl-2">workstream</span><span class="hl-1"> </span><span class="hl-2">planning</span><br/><span class="hl-2">Layer</span><span class="hl-1"> </span><span class="hl-7">2</span><span class="hl-1">: </span><span class="hl-2">Eng</span><span class="hl-1"> </span><span class="hl-0">Lead</span><span class="hl-1"> (</span><span class="hl-4">AI</span><span class="hl-1">)   ─── </span><span class="hl-2">Architecture</span><span class="hl-1">, </span><span class="hl-2">technical</span><span class="hl-1"> </span><span class="hl-2">design</span><span class="hl-1">, </span><span class="hl-2">task</span><span class="hl-1"> </span><span class="hl-2">breakdown</span><br/><span class="hl-2">Layer</span><span class="hl-1"> </span><span class="hl-7">3</span><span class="hl-1">: </span><span class="hl-2">Team</span><span class="hl-1"> </span><span class="hl-0">Lead</span><span class="hl-1"> (</span><span class="hl-4">AI</span><span class="hl-1">)  ─── </span><span class="hl-2">Issue</span><span class="hl-1"> </span><span class="hl-2">creation</span><span class="hl-1">, </span><span class="hl-2">sprint</span><span class="hl-1"> </span><span class="hl-2">management</span><span class="hl-1">, </span><span class="hl-4">PR</span><span class="hl-1"> </span><span class="hl-2">review</span><br/><span class="hl-2">Layer</span><span class="hl-1"> </span><span class="hl-7">4</span><span class="hl-1">: </span><span class="hl-0">Engineers</span><span class="hl-1"> (</span><span class="hl-4">AI</span><span class="hl-1">)  ─── </span><span class="hl-2">Code</span><span class="hl-1"> </span><span class="hl-2">execution</span><span class="hl-1"> </span><span class="hl-6">in</span><span class="hl-1"> </span><span class="hl-2">parallel</span><span class="hl-1"> </span><span class="hl-2">git</span><span class="hl-1"> </span><span class="hl-2">worktrees</span>
+</code><button>Copy</button></pre>
+
+<pre><code class="mermaid">graph TD
+    Start([CEO Directive]) --> Budget{Budget<br/>Available?}
+    Budget -->|No| Stop([Abort: Budget Exceeded])
+    Budget -->|Yes| 2IC[2IC: Strategic Planning]
+
+    2IC --> Validate2IC{Valid<br/>Output?}
+    Validate2IC -->|No| Fail2IC([Cascade Failed])
+    Validate2IC -->|Yes| Lead[Eng Lead: Technical Design]
+
+    Lead --> ValidateLead{Valid<br/>Output?}
+    ValidateLead -->|No| FailLead([Cascade Failed])
+    ValidateLead -->|Yes| InfoReq{Info<br/>Requests?}
+
+    InfoReq -->|Yes| Loopback[Resume Upstream for Answers]
+    Loopback --> TeamLead
+    InfoReq -->|No| TeamLead[Team Lead: Execution]
+
+    TeamLead --> ValidateTL{Valid<br/>Output?}
+    ValidateTL -->|No| FailTL([Cascade Failed])
+    ValidateTL -->|Yes| Pending{Pending<br/>Approvals?}
+
+    Pending -->|Yes| WaitApproval[Log Pending Actions]
+    Pending -->|No| Complete([Cascade Complete])
+    WaitApproval --> Complete
+
+    style Start fill:#e1f5e1
+    style Complete fill:#e1f5e1
+    style Stop fill:#ffe1e1
+    style Fail2IC fill:#ffe1e1
+    style FailLead fill:#ffe1e1
+    style FailTL fill:#ffe1e1
+</code><button type="button">Copy</button></pre>
+
+<p>Each management layer (1-3) is a Claude Code headless session. They reason in natural language and emit structured JSON action blocks.</p>
+<p>For detailed architecture diagrams including action lifecycle, scheduler state machine, and error handling flows, see <a href="media/ARCHITECTURE.md">ARCHITECTURE.md</a>.</p>
+<pre><code class="json"><span class="hl-1">{</span><br/><span class="hl-1">  </span><span class="hl-8">&quot;action&quot;</span><span class="hl-1">: </span><span class="hl-3">&quot;create_issues&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-8">&quot;issues&quot;</span><span class="hl-1">: [</span><br/><span class="hl-1">    {</span><br/><span class="hl-1">      </span><span class="hl-8">&quot;title&quot;</span><span class="hl-1">: </span><span class="hl-3">&quot;[Backend] JWT authentication with refresh tokens&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">      </span><span class="hl-8">&quot;body&quot;</span><span class="hl-1">: </span><span class="hl-3">&quot;## Overview</span><span class="hl-9">\n</span><span class="hl-3">...&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">      </span><span class="hl-8">&quot;labels&quot;</span><span class="hl-1">: [</span><span class="hl-3">&quot;backend&quot;</span><span class="hl-1">, </span><span class="hl-3">&quot;ralphy-1&quot;</span><span class="hl-1">]</span><br/><span class="hl-1">    }</span><br/><span class="hl-1">  ]</span><br/><span class="hl-1">}</span>
+</code><button type="button">Copy</button></pre>
+
+<p>Engineers (Layer 4) use <a href="https://github.com/Venin-Client-Systems/echelon/tree/main/ralphy">Cheenoski</a> — a parallel code execution engine that processes GitHub issues in isolated git worktrees, one branch per task, automatic PR creation.</p>
+<h3 id="approval-modes" class="tsd-anchor-link">Approval Modes<a href="#approval-modes" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>destructive</code> (default)</td>
+<td>CEO approves issue creation, code execution, and branch creation</td>
+</tr>
+<tr>
+<td><code>all</code></td>
+<td>CEO approves every action</td>
+</tr>
+<tr>
+<td><code>none</code></td>
+<td>Fully autonomous — no human approval required</td>
+</tr>
+</tbody>
+</table>
+<h3 id="actions" class="tsd-anchor-link">Actions<a href="#actions" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Who</th>
+<th>What</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>update_plan</code></td>
+<td>2IC, Eng Lead</td>
+<td>Update strategic plan with workstreams</td>
+</tr>
+<tr>
+<td><code>create_issues</code></td>
+<td>Team Lead</td>
+<td>Create GitHub issues via <code>gh</code></td>
+</tr>
+<tr>
+<td><code>invoke_cheenoski</code></td>
+<td>Team Lead</td>
+<td>Start parallel code execution</td>
+</tr>
+<tr>
+<td><code>create_branch</code></td>
+<td>Eng Lead</td>
+<td>Cut a new git branch</td>
+</tr>
+<tr>
+<td><code>request_review</code></td>
+<td>Team Lead</td>
+<td>Request PR review</td>
+</tr>
+<tr>
+<td><code>request_info</code></td>
+<td>Any layer</td>
+<td>Ask another layer a question</td>
+</tr>
+<tr>
+<td><code>escalate</code></td>
+<td>Any layer</td>
+<td>Bubble a decision to a higher layer</td>
+</tr>
+</tbody>
+</table>
+<h2 id="configuration" class="tsd-anchor-link">Configuration<a href="#configuration" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p><code>echelon.config.json</code>:</p>
+<pre><code class="json"><span class="hl-1">{</span><br/><span class="hl-1">  </span><span class="hl-8">&quot;project&quot;</span><span class="hl-1">: {</span><br/><span class="hl-1">    </span><span class="hl-8">&quot;repo&quot;</span><span class="hl-1">: </span><span class="hl-3">&quot;owner/repo&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-8">&quot;path&quot;</span><span class="hl-1">: </span><span class="hl-3">&quot;/absolute/path/to/repo&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-8">&quot;baseBranch&quot;</span><span class="hl-1">: </span><span class="hl-3">&quot;main&quot;</span><br/><span class="hl-1">  },</span><br/><span class="hl-1">  </span><span class="hl-8">&quot;layers&quot;</span><span class="hl-1">: {</span><br/><span class="hl-1">    </span><span class="hl-8">&quot;2ic&quot;</span><span class="hl-1">:       { </span><span class="hl-8">&quot;model&quot;</span><span class="hl-1">: </span><span class="hl-3">&quot;opus&quot;</span><span class="hl-1">,   </span><span class="hl-8">&quot;maxBudgetUsd&quot;</span><span class="hl-1">: </span><span class="hl-7">10.0</span><span class="hl-1">, </span><span class="hl-8">&quot;maxTurns&quot;</span><span class="hl-1">: </span><span class="hl-7">5</span><span class="hl-1"> },</span><br/><span class="hl-1">    </span><span class="hl-8">&quot;eng-lead&quot;</span><span class="hl-1">:  { </span><span class="hl-8">&quot;model&quot;</span><span class="hl-1">: </span><span class="hl-3">&quot;sonnet&quot;</span><span class="hl-1">, </span><span class="hl-8">&quot;maxBudgetUsd&quot;</span><span class="hl-1">: </span><span class="hl-7">5.0</span><span class="hl-1"> },</span><br/><span class="hl-1">    </span><span class="hl-8">&quot;team-lead&quot;</span><span class="hl-1">: { </span><span class="hl-8">&quot;model&quot;</span><span class="hl-1">: </span><span class="hl-3">&quot;sonnet&quot;</span><span class="hl-1">, </span><span class="hl-8">&quot;maxBudgetUsd&quot;</span><span class="hl-1">: </span><span class="hl-7">5.0</span><span class="hl-1"> }</span><br/><span class="hl-1">  },</span><br/><span class="hl-1">  </span><span class="hl-8">&quot;engineers&quot;</span><span class="hl-1">: {</span><br/><span class="hl-1">    </span><span class="hl-8">&quot;maxParallel&quot;</span><span class="hl-1">: </span><span class="hl-7">3</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-8">&quot;createPr&quot;</span><span class="hl-1">: </span><span class="hl-6">true</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-8">&quot;prDraft&quot;</span><span class="hl-1">: </span><span class="hl-6">true</span><br/><span class="hl-1">  },</span><br/><span class="hl-1">  </span><span class="hl-8">&quot;approvalMode&quot;</span><span class="hl-1">: </span><span class="hl-3">&quot;destructive&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-8">&quot;maxTotalBudgetUsd&quot;</span><span class="hl-1">: </span><span class="hl-7">50.0</span><br/><span class="hl-1">}</span>
+</code><button type="button">Copy</button></pre>
+
+<p>All fields except <code>project.repo</code> and <code>project.path</code> have defaults. When auto-discovery generates an in-memory config, it uses:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>layers.*.model</code></td>
+<td><code>sonnet</code></td>
+</tr>
+<tr>
+<td><code>layers.*.maxBudgetUsd</code></td>
+<td><code>5.0</code></td>
+</tr>
+<tr>
+<td><code>engineers.maxParallel</code></td>
+<td><code>3</code></td>
+</tr>
+<tr>
+<td><code>approvalMode</code></td>
+<td><code>destructive</code></td>
+</tr>
+<tr>
+<td><code>maxTotalBudgetUsd</code></td>
+<td><code>50.0</code></td>
+</tr>
+<tr>
+<td><code>baseBranch</code></td>
+<td><code>main</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="models" class="tsd-anchor-link">Models<a href="#models" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Best For</th>
+<th>Cost</th>
+<th>Default Turns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>opus</code></td>
+<td>Strategy, complex reasoning (2IC)</td>
+<td>$$$</td>
+<td>5</td>
+</tr>
+<tr>
+<td><code>sonnet</code></td>
+<td>Architecture, task breakdown (Eng Lead, Team Lead)</td>
+<td>$$</td>
+<td>8</td>
+</tr>
+<tr>
+<td><code>haiku</code></td>
+<td>Fast iteration, simple tasks</td>
+<td>$</td>
+<td>12</td>
+</tr>
+</tbody>
+</table>
+<p>Each layer's <code>maxTurns</code> can be overridden in the config. More turns = more file reading and reasoning, but higher cost.</p>
+<h2 id="cli-reference" class="tsd-anchor-link">CLI Reference<a href="#cli-reference" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<pre><code><span class="hl-10">Usage</span><span class="hl-1">: </span><span class="hl-2">echelon</span><span class="hl-1"> [</span><span class="hl-2">options</span><span class="hl-1">] [</span><span class="hl-2">command</span><span class="hl-1">]</span><br/><br/><span class="hl-10">Options</span><span class="hl-1">:</span><br/><span class="hl-1">  -</span><span class="hl-2">c</span><span class="hl-1">, --</span><span class="hl-2">config</span><span class="hl-1"> &lt;</span><span class="hl-2">path</span><span class="hl-1">&gt;          </span><span class="hl-2">Path</span><span class="hl-1"> </span><span class="hl-2">to</span><span class="hl-1"> </span><span class="hl-2">echelon</span><span class="hl-1">.</span><span class="hl-2">config</span><span class="hl-1">.</span><span class="hl-0">json</span><span class="hl-1"> (</span><span class="hl-2">auto</span><span class="hl-1">-</span><span class="hl-2">discovered</span><span class="hl-1"> </span><span class="hl-2">if</span><span class="hl-1"> </span><span class="hl-2">omitted</span><span class="hl-1">)</span><br/><span class="hl-1">  -</span><span class="hl-2">d</span><span class="hl-1">, --</span><span class="hl-2">directive</span><span class="hl-1"> &lt;</span><span class="hl-2">text</span><span class="hl-1">&gt;       </span><span class="hl-4">CEO</span><span class="hl-1"> </span><span class="hl-2">directive</span><span class="hl-1"> </span><span class="hl-2">to</span><span class="hl-1"> </span><span class="hl-2">execute</span><br/><span class="hl-1">  --</span><span class="hl-2">headless</span><span class="hl-1">                   </span><span class="hl-2">Run</span><span class="hl-1"> </span><span class="hl-2">without</span><span class="hl-1"> </span><span class="hl-0">TUI</span><span class="hl-1"> (</span><span class="hl-2">headless</span><span class="hl-1"> </span><span class="hl-2">mode</span><span class="hl-1">)</span><br/><span class="hl-1">  --</span><span class="hl-2">dry</span><span class="hl-1">-</span><span class="hl-2">run</span><span class="hl-1">                    </span><span class="hl-2">Show</span><span class="hl-1"> </span><span class="hl-2">planned</span><span class="hl-1"> </span><span class="hl-2">cascade</span><span class="hl-1"> </span><span class="hl-2">without</span><span class="hl-1"> </span><span class="hl-2">executing</span><br/><span class="hl-1">  --</span><span class="hl-2">resume</span><span class="hl-1">                     </span><span class="hl-2">Resume</span><span class="hl-1"> </span><span class="hl-2">the</span><span class="hl-1"> </span><span class="hl-2">most</span><span class="hl-1"> </span><span class="hl-2">recent</span><span class="hl-1"> </span><span class="hl-2">session</span><br/><span class="hl-1">  -</span><span class="hl-2">v</span><span class="hl-1">, --</span><span class="hl-2">verbose</span><span class="hl-1">                </span><span class="hl-2">Enable</span><span class="hl-1"> </span><span class="hl-2">debug</span><span class="hl-1"> </span><span class="hl-2">logging</span><br/><span class="hl-1">  --</span><span class="hl-2">approval</span><span class="hl-1">-</span><span class="hl-2">mode</span><span class="hl-1"> &lt;</span><span class="hl-2">mode</span><span class="hl-1">&gt;       </span><span class="hl-2">Override</span><span class="hl-1"> </span><span class="hl-2">approval</span><span class="hl-1"> </span><span class="hl-0">mode</span><span class="hl-1"> (</span><span class="hl-2">destructive</span><span class="hl-1">, </span><span class="hl-2">all</span><span class="hl-1">, </span><span class="hl-2">none</span><span class="hl-1">)</span><br/><span class="hl-1">  --</span><span class="hl-2">telegram</span><span class="hl-1">                   </span><span class="hl-2">Start</span><span class="hl-1"> </span><span class="hl-6">in</span><span class="hl-1"> </span><span class="hl-2">Telegram</span><span class="hl-1"> </span><span class="hl-2">bot</span><span class="hl-1"> </span><span class="hl-2">mode</span><br/><span class="hl-1">  -</span><span class="hl-4">V</span><span class="hl-1">, --</span><span class="hl-2">version</span><span class="hl-1">                </span><span class="hl-2">Output</span><span class="hl-1"> </span><span class="hl-2">version</span><span class="hl-1"> </span><span class="hl-2">number</span><br/><span class="hl-1">  -</span><span class="hl-2">h</span><span class="hl-1">, --</span><span class="hl-2">help</span><span class="hl-1">                   </span><span class="hl-2">Display</span><span class="hl-1"> </span><span class="hl-2">help</span><br/><br/><span class="hl-10">Commands</span><span class="hl-1">:</span><br/><span class="hl-1">  </span><span class="hl-2">run</span><span class="hl-1"> [</span><span class="hl-2">options</span><span class="hl-1">]                </span><span class="hl-2">Run</span><span class="hl-1"> </span><span class="hl-2">the</span><span class="hl-1"> </span><span class="hl-0">orchestrator</span><span class="hl-1"> (</span><span class="hl-2">default</span><span class="hl-1">)</span><br/><span class="hl-1">  </span><span class="hl-2">init</span><span class="hl-1">                         </span><span class="hl-2">Interactive</span><span class="hl-1"> </span><span class="hl-2">config</span><span class="hl-1"> </span><span class="hl-0">generator</span><span class="hl-1"> (</span><span class="hl-2">full</span><span class="hl-1"> </span><span class="hl-2">wizard</span><span class="hl-1">)</span><br/><span class="hl-1">  </span><span class="hl-2">sessions</span><span class="hl-1"> </span><span class="hl-2">list</span><span class="hl-1">                </span><span class="hl-2">List</span><span class="hl-1"> </span><span class="hl-2">all</span><span class="hl-1"> </span><span class="hl-2">saved</span><span class="hl-1"> </span><span class="hl-2">sessions</span><br/><span class="hl-1">  </span><span class="hl-2">sessions</span><span class="hl-1"> </span><span class="hl-2">prune</span><span class="hl-1">               </span><span class="hl-2">Delete</span><span class="hl-1"> </span><span class="hl-2">completed</span><span class="hl-1">/</span><span class="hl-2">failed</span><span class="hl-1"> </span><span class="hl-2">sessions</span><br/><span class="hl-1">  </span><span class="hl-2">sessions</span><span class="hl-1"> </span><span class="hl-6">delete</span><span class="hl-1"> &lt;</span><span class="hl-2">id</span><span class="hl-1">&gt;         </span><span class="hl-2">Delete</span><span class="hl-1"> </span><span class="hl-2">a</span><span class="hl-1"> </span><span class="hl-2">specific</span><span class="hl-1"> </span><span class="hl-2">session</span>
+</code><button>Copy</button></pre>
+
+<h3 id="common-workflows" class="tsd-anchor-link">Common Workflows<a href="#common-workflows" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<pre><code class="bash"><span class="hl-5"># First time — auto-detects repo, quick setup, launches TUI</span><br/><span class="hl-0">echelon</span><br/><br/><span class="hl-5"># Give a directive interactively via TUI</span><br/><span class="hl-0">echelon</span><br/><br/><span class="hl-5"># Headless one-liner</span><br/><span class="hl-0">echelon</span><span class="hl-1"> </span><span class="hl-6">-d</span><span class="hl-1"> </span><span class="hl-3">&quot;Fix all TODO comments in src/&quot;</span><span class="hl-1"> </span><span class="hl-6">--headless</span><br/><br/><span class="hl-5"># Dry run to preview the cascade</span><br/><span class="hl-0">echelon</span><span class="hl-1"> </span><span class="hl-6">-d</span><span class="hl-1"> </span><span class="hl-3">&quot;Add rate limiting to API&quot;</span><span class="hl-1"> </span><span class="hl-6">--dry-run</span><br/><br/><span class="hl-5"># Full auto — no approval prompts</span><br/><span class="hl-0">echelon</span><span class="hl-1"> </span><span class="hl-6">-d</span><span class="hl-1"> </span><span class="hl-3">&quot;Add unit tests&quot;</span><span class="hl-1"> </span><span class="hl-6">--headless</span><span class="hl-1"> </span><span class="hl-6">--approval-mode</span><span class="hl-1"> </span><span class="hl-3">none</span><br/><br/><span class="hl-5"># Resume where you left off</span><br/><span class="hl-0">echelon</span><span class="hl-1"> </span><span class="hl-6">--resume</span><br/><br/><span class="hl-5"># Explicit config</span><br/><span class="hl-0">echelon</span><span class="hl-1"> </span><span class="hl-6">--config</span><span class="hl-1"> </span><span class="hl-3">path/to/echelon.config.json</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="tui-commands" class="tsd-anchor-link">TUI Commands<a href="#tui-commands" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Once inside the TUI, type these at the CEO prompt:</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><em>free text</em></td>
+<td>Send a new directive to the 2IC</td>
+</tr>
+<tr>
+<td><code>/approve</code></td>
+<td>Approve all pending actions</td>
+</tr>
+<tr>
+<td><code>/reject [reason]</code></td>
+<td>Reject pending actions with optional reason</td>
+</tr>
+<tr>
+<td><code>/pause</code></td>
+<td>Pause the current cascade</td>
+</tr>
+<tr>
+<td><code>/status</code></td>
+<td>Show current org status</td>
+</tr>
+<tr>
+<td><code>/cost</code></td>
+<td>Show spending breakdown</td>
+</tr>
+<tr>
+<td><code>/quit</code></td>
+<td>Save state and exit</td>
+</tr>
+</tbody>
+</table>
+<h2 id="tui-layout" class="tsd-anchor-link">TUI Layout<a href="#tui-layout" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<pre><code><span class="hl-1">┌─ </span><span class="hl-2">Echelon</span><span class="hl-1"> ──────────────────────── </span><span class="hl-2">project</span><span class="hl-1"> ────┐</span><br/><span class="hl-1">│ ┌─ </span><span class="hl-2">Org</span><span class="hl-1"> ──────────┐  ┌─ </span><span class="hl-2">Feed</span><span class="hl-1"> ────────────────┐ │</span><br/><span class="hl-1">│ │ </span><span class="hl-4">CEO</span><span class="hl-1">     ● </span><span class="hl-2">you</span><span class="hl-1">  │  │ [2</span><span class="hl-4">IC</span><span class="hl-1">] </span><span class="hl-2">Breaking</span><span class="hl-1"> </span><span class="hl-2">down</span><span class="hl-1">.. │ │</span><br/><span class="hl-1">│ │ 2</span><span class="hl-4">IC</span><span class="hl-1">     ◆ </span><span class="hl-2">plan</span><span class="hl-1"> │  │ [</span><span class="hl-2">Lead</span><span class="hl-1">] </span><span class="hl-4">JWT</span><span class="hl-1"> + </span><span class="hl-2">refresh</span><span class="hl-1">  │ │</span><br/><span class="hl-1">│ │ </span><span class="hl-2">Lead</span><span class="hl-1">    ○ </span><span class="hl-2">idle</span><span class="hl-1"> │  │ [</span><span class="hl-4">TL</span><span class="hl-1">] </span><span class="hl-2">Created</span><span class="hl-1"> #</span><span class="hl-7">42.</span><span class="hl-1">..   │ │</span><br/><span class="hl-1">│ │ </span><span class="hl-4">TL</span><span class="hl-1">      ○ </span><span class="hl-2">idle</span><span class="hl-1"> │  │ [</span><span class="hl-2">Eng</span><span class="hl-1">#</span><span class="hl-7">1</span><span class="hl-1">] </span><span class="hl-2">Working</span><span class="hl-1"> #</span><span class="hl-7">42</span><span class="hl-1">   │ │</span><br/><span class="hl-1">│ │ </span><span class="hl-2">Eng</span><span class="hl-1"> #</span><span class="hl-7">1</span><span class="hl-1">  ▶ </span><span class="hl-2">code</span><span class="hl-1"> │  │ [</span><span class="hl-2">Eng</span><span class="hl-1">#</span><span class="hl-7">2</span><span class="hl-1">] </span><span class="hl-4">PR</span><span class="hl-1"> #</span><span class="hl-7">12</span><span class="hl-1"> </span><span class="hl-2">open</span><span class="hl-1">   │ │</span><br/><span class="hl-1">│ └────────────────┘  └───────────────────────┘ │</span><br/><span class="hl-1">│ ┌─ </span><span class="hl-2">Issues</span><span class="hl-1"> ───────┐  </span><span class="hl-10">Cost</span><span class="hl-1">: </span><span class="hl-2">$2</span><span class="hl-1">.</span><span class="hl-7">40</span><span class="hl-1"> | </span><span class="hl-10">Time</span><span class="hl-1">: 8</span><span class="hl-2">m</span><span class="hl-1">   │</span><br/><span class="hl-1">│ │ #</span><span class="hl-7">42</span><span class="hl-1"> </span><span class="hl-4">JWT</span><span class="hl-1">    ▶  │                             │</span><br/><span class="hl-1">│ │ #</span><span class="hl-7">43</span><span class="hl-1"> </span><span class="hl-4">RBAC</span><span class="hl-1">   ○  │                             │</span><br/><span class="hl-1">│ └────────────────┘                             │</span><br/><span class="hl-1">│ </span><span class="hl-4">CEO</span><span class="hl-1"> &gt; </span><span class="hl-2">_</span><span class="hl-1">                                        │</span><br/><span class="hl-1">└────────────────────────────────────────────────┘</span>
+</code><button>Copy</button></pre>
+
+<h2 id="session-persistence" class="tsd-anchor-link">Session Persistence<a href="#session-persistence" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>Sessions are saved to <code>~/.echelon/sessions/&lt;project-timestamp&gt;/</code>:</p>
+<ul>
+<li><code>state.json</code> — Full state (agent sessions, messages, issues, costs)</li>
+<li><code>transcript.md</code> — Human-readable activity log</li>
+</ul>
+<p>Resume your last session:</p>
+<pre><code class="bash"><span class="hl-0">echelon</span><span class="hl-1"> </span><span class="hl-6">--resume</span>
+</code><button type="button">Copy</button></pre>
+
+<p>Agent context carries over — Claude sessions are resumed with <code>claude -r &lt;session-id&gt;</code>, so the AI remembers what it was doing.</p>
+<h2 id="architecture" class="tsd-anchor-link">Architecture<a href="#architecture" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<pre><code><span class="hl-2">src</span><span class="hl-1">/</span><br/><span class="hl-1">  </span><span class="hl-2">index</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">                    # </span><span class="hl-2">Entry</span><span class="hl-1"> </span><span class="hl-2">point</span><span class="hl-1"> — </span><span class="hl-2">auto</span><span class="hl-1">-</span><span class="hl-2">discovery</span><span class="hl-1">, </span><span class="hl-2">routes</span><span class="hl-1"> </span><span class="hl-2">to</span><span class="hl-1"> </span><span class="hl-4">TUI</span><span class="hl-1"> </span><span class="hl-2">or</span><span class="hl-1"> </span><span class="hl-2">headless</span><br/><span class="hl-1">  </span><span class="hl-2">cli</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">                      # </span><span class="hl-2">Commander</span><span class="hl-1"> </span><span class="hl-2">arg</span><span class="hl-1"> </span><span class="hl-2">parsing</span><br/><span class="hl-1">  </span><span class="hl-2">commands</span><span class="hl-1">/</span><span class="hl-2">init</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">            # </span><span class="hl-2">Setup</span><span class="hl-1"> </span><span class="hl-2">wizard</span><span class="hl-1"> + </span><span class="hl-2">quick</span><span class="hl-1"> </span><span class="hl-2">init</span><br/><br/><span class="hl-1">  </span><span class="hl-2">core</span><span class="hl-1">/</span><br/><span class="hl-1">    </span><span class="hl-2">orchestrator</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">           # </span><span class="hl-2">Main</span><span class="hl-1"> </span><span class="hl-2">hierarchical</span><span class="hl-1"> </span><span class="hl-2">cascade</span><span class="hl-1"> </span><span class="hl-2">loop</span><br/><span class="hl-1">    </span><span class="hl-2">agent</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">                  # </span><span class="hl-2">Claude</span><span class="hl-1"> </span><span class="hl-2">Code</span><span class="hl-1"> </span><span class="hl-2">session</span><span class="hl-1"> </span><span class="hl-2">spawn</span><span class="hl-1">/</span><span class="hl-2">resume</span><br/><span class="hl-1">    </span><span class="hl-2">message</span><span class="hl-1">-</span><span class="hl-2">bus</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">            # </span><span class="hl-2">EventEmitter</span><span class="hl-1"> </span><span class="hl-2">routing</span><span class="hl-1"> </span><span class="hl-2">between</span><span class="hl-1"> </span><span class="hl-2">layers</span><br/><span class="hl-1">    </span><span class="hl-2">action</span><span class="hl-1">-</span><span class="hl-2">parser</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">          # </span><span class="hl-2">Extract</span><span class="hl-1"> </span><span class="hl-4">JSON</span><span class="hl-1"> </span><span class="hl-2">action</span><span class="hl-1"> </span><span class="hl-2">blocks</span><span class="hl-1"> </span><span class="hl-2">from</span><span class="hl-1"> </span><span class="hl-2">agent</span><span class="hl-1"> </span><span class="hl-2">text</span><br/><span class="hl-1">    </span><span class="hl-2">action</span><span class="hl-1">-</span><span class="hl-2">executor</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">        # </span><span class="hl-2">Execute</span><span class="hl-1"> </span><span class="hl-2">or</span><span class="hl-1"> </span><span class="hl-2">queue</span><span class="hl-1"> </span><span class="hl-2">actions</span><span class="hl-1"> </span><span class="hl-2">for</span><span class="hl-1"> </span><span class="hl-2">approval</span><br/><span class="hl-1">    </span><span class="hl-2">state</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">                  # </span><span class="hl-2">Persistent</span><span class="hl-1"> </span><span class="hl-2">state</span><span class="hl-1"> </span><span class="hl-2">load</span><span class="hl-1">/</span><span class="hl-2">save</span><span class="hl-1">/</span><span class="hl-2">resume</span><br/><span class="hl-1">    </span><span class="hl-2">session</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">                # </span><span class="hl-2">Session</span><span class="hl-1"> </span><span class="hl-0">management</span><span class="hl-1"> (</span><span class="hl-2">list</span><span class="hl-1">, </span><span class="hl-2">prune</span><span class="hl-1">, </span><span class="hl-6">delete</span><span class="hl-1">)</span><br/><br/><span class="hl-1">  </span><span class="hl-2">actions</span><span class="hl-1">/</span><br/><span class="hl-1">    </span><span class="hl-2">github</span><span class="hl-1">-</span><span class="hl-2">issues</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">          # </span><span class="hl-2">gh</span><span class="hl-1"> </span><span class="hl-2">issue</span><span class="hl-1"> </span><span class="hl-2">create</span><span class="hl-1">/</span><span class="hl-2">update</span><span class="hl-1">/</span><span class="hl-2">close</span><br/><span class="hl-1">    </span><span class="hl-2">ralphy</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">                 # </span><span class="hl-2">Invoke</span><span class="hl-1"> </span><span class="hl-2">Cheenoski</span><span class="hl-1"> </span><span class="hl-11">as</span><span class="hl-1"> </span><span class="hl-12">subprocess</span><br/><span class="hl-1">    </span><span class="hl-2">git</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">                    # </span><span class="hl-2">Branch</span><span class="hl-1"> </span><span class="hl-2">management</span><br/><span class="hl-1">    </span><span class="hl-2">review</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">                 # </span><span class="hl-4">PR</span><span class="hl-1"> </span><span class="hl-2">review</span><br/><br/><span class="hl-1">  </span><span class="hl-2">ui</span><span class="hl-1">/                         # </span><span class="hl-0">Ink</span><span class="hl-1"> (</span><span class="hl-2">React</span><span class="hl-1"> </span><span class="hl-2">for</span><span class="hl-1"> </span><span class="hl-4">CLI</span><span class="hl-1">) </span><span class="hl-2">components</span><br/><span class="hl-1">    </span><span class="hl-2">App</span><span class="hl-1">.</span><span class="hl-2">tsx</span><span class="hl-1">                   # </span><span class="hl-2">Root</span><span class="hl-1"> </span><span class="hl-2">layout</span><br/><span class="hl-1">    </span><span class="hl-2">OrgChart</span><span class="hl-1">.</span><span class="hl-2">tsx</span><span class="hl-1">              # </span><span class="hl-2">Agent</span><span class="hl-1"> </span><span class="hl-2">status</span><span class="hl-1"> </span><span class="hl-2">sidebar</span><br/><span class="hl-1">    </span><span class="hl-2">Feed</span><span class="hl-1">.</span><span class="hl-2">tsx</span><span class="hl-1">                  # </span><span class="hl-2">Scrollable</span><span class="hl-1"> </span><span class="hl-2">activity</span><span class="hl-1"> </span><span class="hl-2">log</span><br/><span class="hl-1">    </span><span class="hl-2">IssuePanel</span><span class="hl-1">.</span><span class="hl-2">tsx</span><span class="hl-1">            # </span><span class="hl-2">GitHub</span><span class="hl-1"> </span><span class="hl-2">issues</span><span class="hl-1"> </span><span class="hl-2">tracker</span><br/><span class="hl-1">    </span><span class="hl-2">Input</span><span class="hl-1">.</span><span class="hl-2">tsx</span><span class="hl-1">                 # </span><span class="hl-4">CEO</span><span class="hl-1"> </span><span class="hl-2">command</span><span class="hl-1"> </span><span class="hl-2">input</span><br/><span class="hl-1">    </span><span class="hl-2">StatusBar</span><span class="hl-1">.</span><span class="hl-2">tsx</span><span class="hl-1">             # </span><span class="hl-2">Cost</span><span class="hl-1">, </span><span class="hl-2">time</span><span class="hl-1">, </span><span class="hl-2">project</span><span class="hl-1"> </span><span class="hl-2">info</span><br/><span class="hl-1">    </span><span class="hl-2">ApprovalPrompt</span><span class="hl-1">.</span><span class="hl-2">tsx</span><span class="hl-1">        # </span><span class="hl-2">Inline</span><span class="hl-1"> </span><span class="hl-2">approval</span><span class="hl-1"> </span><span class="hl-4">UI</span><br/><span class="hl-1">    </span><span class="hl-2">hooks</span><span class="hl-1">/</span><span class="hl-2">useEchelon</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">       # </span><span class="hl-2">Bridge</span><span class="hl-1"> </span><span class="hl-2">orchestrator</span><span class="hl-1"> </span><span class="hl-2">state</span><span class="hl-1"> </span><span class="hl-2">to</span><span class="hl-1"> </span><span class="hl-2">React</span><br/><br/><span class="hl-1">  </span><span class="hl-2">lib</span><span class="hl-1">/</span><br/><span class="hl-1">    </span><span class="hl-2">types</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">                  # </span><span class="hl-2">Zod</span><span class="hl-1"> </span><span class="hl-2">schemas</span><span class="hl-1"> </span><span class="hl-2">for</span><span class="hl-1"> </span><span class="hl-2">config</span><span class="hl-1">, </span><span class="hl-2">actions</span><span class="hl-1">, </span><span class="hl-2">state</span><br/><span class="hl-1">    </span><span class="hl-2">paths</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">                  # </span><span class="hl-2">Atomic</span><span class="hl-1"> </span><span class="hl-4">JSON</span><span class="hl-1"> </span><span class="hl-2">writes</span><br/><span class="hl-1">    </span><span class="hl-2">logger</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">                 # </span><span class="hl-2">Structured</span><span class="hl-1"> </span><span class="hl-2">logging</span><br/><span class="hl-1">    </span><span class="hl-2">config</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">                 # </span><span class="hl-2">Config</span><span class="hl-1"> </span><span class="hl-2">loader</span><span class="hl-1">, </span><span class="hl-2">auto</span><span class="hl-1">-</span><span class="hl-2">discovery</span><span class="hl-1">, </span><span class="hl-11">default</span><span class="hl-1"> </span><span class="hl-2">generation</span><br/><span class="hl-1">    </span><span class="hl-2">git</span><span class="hl-1">-</span><span class="hl-2">detect</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">             # </span><span class="hl-2">Git</span><span class="hl-1"> </span><span class="hl-2">remote</span><span class="hl-1">/</span><span class="hl-2">root</span><span class="hl-1">/</span><span class="hl-2">branch</span><span class="hl-1"> </span><span class="hl-2">detection</span><br/><span class="hl-1">    </span><span class="hl-2">transcript</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">             # </span><span class="hl-2">Markdown</span><span class="hl-1"> </span><span class="hl-2">transcript</span><span class="hl-1"> </span><span class="hl-2">writer</span><br/><span class="hl-1">    </span><span class="hl-2">prompts</span><span class="hl-1">.</span><span class="hl-2">ts</span><span class="hl-1">                # </span><span class="hl-2">System</span><span class="hl-1"> </span><span class="hl-2">prompts</span><span class="hl-1"> </span><span class="hl-2">for</span><span class="hl-1"> </span><span class="hl-2">each</span><span class="hl-1"> </span><span class="hl-2">layer</span><br/><br/><span class="hl-2">ralphy</span><span class="hl-1">/                       # </span><span class="hl-2">Bundled</span><span class="hl-1"> </span><span class="hl-2">parallel</span><span class="hl-1"> </span><span class="hl-2">execution</span><span class="hl-1"> </span><span class="hl-0">engine</span><span class="hl-1"> (</span><span class="hl-2">Cheenoski</span><span class="hl-1">)</span>
+</code><button>Copy</button></pre>
+
+<h2 id="contributing" class="tsd-anchor-link">Contributing<a href="#contributing" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>Issues and PRs are welcome. This is early-stage software — expect rough edges.</p>
+<pre><code class="bash"><span class="hl-5"># Development</span><br/><span class="hl-0">npm</span><span class="hl-1"> </span><span class="hl-3">run</span><span class="hl-1"> </span><span class="hl-3">dev</span><span class="hl-1"> </span><span class="hl-6">--</span><span class="hl-1"> </span><span class="hl-6">-d</span><span class="hl-1"> </span><span class="hl-3">&quot;your directive&quot;</span><span class="hl-1"> </span><span class="hl-6">--headless</span><br/><br/><span class="hl-5"># Type checking</span><br/><span class="hl-0">npm</span><span class="hl-1"> </span><span class="hl-3">run</span><span class="hl-1"> </span><span class="hl-3">typecheck</span>
+</code><button type="button">Copy</button></pre>
+
+<h2 id="license" class="tsd-anchor-link">License<a href="#license" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p><a href="media/LICENSE">MIT</a> © Venin Client Systems</p>
+</div></div><div class="col-sidebar"><div class="page-menu"><div class="tsd-navigation settings"><details class="tsd-accordion"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-chevronDown"></use></svg><h3>Settings</h3></summary><div class="tsd-accordion-details"><div class="tsd-filter-visibility"><span class="settings-label">Member Visibility</span><ul id="tsd-filter-options"><li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-protected" name="protected"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Protected</span></label></li><li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-inherited" name="inherited" checked/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Inherited</span></label></li></ul></div><div class="tsd-theme-toggle"><label class="settings-label" for="tsd-theme">Theme</label><select id="tsd-theme"><option value="os">OS</option><option value="light">Light</option><option value="dark">Dark</option></select></div></div></details></div><details open class="tsd-accordion tsd-page-navigation"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-chevronDown"></use></svg><h3>On This Page</h3></summary><div class="tsd-accordion-details"><a href="#what-it-does"><span>What <wbr/>It <wbr/>Does</span></a><a href="#prerequisites"><span>Prerequisites</span></a><a href="#installation"><span>Installation</span></a><a href="#quick-start"><span>Quick <wbr/>Start</span></a><ul><li><a href="#just-run-it"><span>Just run it</span></a></li><li><a href="#headless-mode"><span>Headless mode</span></a></li><li><a href="#dry-run"><span>Dry run</span></a></li><li><a href="#full-setup-wizard"><span>Full setup wizard</span></a></li><li><a href="#explicit-config-path"><span>Explicit config path</span></a></li></ul><a href="#config-discovery"><span>Config <wbr/>Discovery</span></a><a href="#how-it-works"><span>How <wbr/>It <wbr/>Works</span></a><ul><li><a href="#the-cascade"><span>The <wbr/>Cascade</span></a></li><li><a href="#approval-modes"><span>Approval <wbr/>Modes</span></a></li><li><a href="#actions"><span>Actions</span></a></li></ul><a href="#configuration"><span>Configuration</span></a><ul><li><a href="#models"><span>Models</span></a></li></ul><a href="#cli-reference"><span>CLI <wbr/>Reference</span></a><ul><li><a href="#common-workflows"><span>Common <wbr/>Workflows</span></a></li><li><a href="#tui-commands"><span>TUI <wbr/>Commands</span></a></li></ul><a href="#tui-layout"><span>TUI <wbr/>Layout</span></a><a href="#session-persistence"><span>Session <wbr/>Persistence</span></a><a href="#architecture"><span>Architecture</span></a><a href="#contributing"><span>Contributing</span></a><a href="#license"><span>License</span></a></div></details></div><div class="site-menu"><nav class="tsd-navigation"><a href="modules.html">Echelon API Documentation - v0.1.0</a><ul class="tsd-small-nested-navigation" id="tsd-nav-container"><li>Loading...</li></ul></nav></div></div></div><footer><p class="tsd-generator">Generated using <a href="https://typedoc.org/" target="_blank">TypeDoc</a></p></footer><div class="overlay"></div></body></html>
