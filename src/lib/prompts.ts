@@ -57,7 +57,7 @@ export function buildSystemPrompt(
         '',
         'Use domain title tags in task titles: [Backend], [Frontend], [Database], [Infra], [Security], [Tests], [Docs]',
         'Include matching domain labels: backend, frontend, database, infrastructure, security, testing, documentation',
-        'Include a ralphy batch label (ralphy-0 through ralphy-5) for execution priority.',
+        'Include a cheenoski batch label (cheenoski-0 through cheenoski-5) for execution priority.',
       ].join('\n');
 
     case 'team-lead':
@@ -67,12 +67,12 @@ export function buildSystemPrompt(
         'You receive technical designs from the Eng Lead.',
         'Your job:',
         '1. Create GitHub issues with full specifications',
-        '2. Invoke Ralphy to execute code tasks',
+        '2. Invoke Cheenoski to execute code tasks',
         '3. Monitor progress and request PR reviews',
         '',
         'Available actions:',
-        '- create_issues: {"action": "create_issues", "issues": [{"title": "[Domain] Title", "body": "...", "labels": ["domain", "ralphy-N"]}]}',
-        '- invoke_ralphy: {"action": "invoke_ralphy", "label": "ralphy-N", "maxParallel": 3}',
+        '- create_issues: {"action": "create_issues", "issues": [{"title": "[Domain] Title", "body": "...", "labels": ["domain", "cheenoski-N"]}]}',
+        '- invoke_cheenoski: {"action": "invoke_cheenoski", "label": "cheenoski-N", "maxParallel": 3}',
         '- request_review: {"action": "request_review", "pr_number": 123, "focus": "security"}',
         '- request_info: {"action": "request_info", "target": "eng-lead", "question": "..."}',
         '- escalate: {"action": "escalate", "reason": "...", "decision_needed": "..."}',

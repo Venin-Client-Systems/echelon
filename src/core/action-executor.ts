@@ -6,16 +6,16 @@ import type {
 } from '../lib/types.js';
 import type { MessageBus } from './message-bus.js';
 import { createIssues } from '../actions/github-issues.js';
-import { invokeRalphy } from '../actions/ralphy.js';
+import { invokeCheenoski } from '../actions/cheenoski.js';
 import { createBranch } from '../actions/git.js';
 import { requestReview } from '../actions/review.js';
 
 /** Actions that require CEO approval in "destructive" mode */
-const DESTRUCTIVE_ACTIONS = new Set(['create_issues', 'invoke_ralphy', 'create_branch']);
+const DESTRUCTIVE_ACTIONS = new Set(['create_issues', 'invoke_cheenoski', 'invoke_ralphy', 'create_branch']);
 
 export class ActionExecutor {
   private pendingApprovals: Map<string, PendingApproval> = new Map();
-  private ralphyKillHandles: Array<{ label: string; kill: () => void }> = [];
+  private cheenoskiKillHandles: Array<{ label: string; kill: () => void }> = [];
 
   constructor(
     private config: EchelonConfig,
@@ -93,14 +93,15 @@ export class ActionExecutor {
 
       case 'invoke_cheenoski':
       case 'invoke_ralphy': {
-        const handle = invokeRalphy(
+        const handle = invokeCheenoski(
           action.label,
           this.config,
           action.maxParallel,
+          this.bus,
           (line) => this.bus.emitEchelon({ type: 'ralphy_progress', label: action.label, line }),
         );
-        this.ralphyKillHandles.push({ label: action.label, kill: handle.kill });
-        return `Ralphy invoked for label: ${action.label}`;
+        this.cheenoskiKillHandles.push({ label: action.label, kill: handle.kill });
+        return `Cheenoski invoked for label: ${action.label}`;
       }
 
       case 'create_branch': {
@@ -173,16 +174,16 @@ export class ActionExecutor {
     return [...this.pendingApprovals.values()];
   }
 
-  /** Kill all running Ralphy subprocesses */
-  killAllRalphy(): void {
-    for (const handle of this.ralphyKillHandles) {
+  /** Kill all running Cheenoski subprocesses */
+  killAll(): void {
+    for (const handle of this.cheenoskiKillHandles) {
       try {
         handle.kill();
       } catch {
-        logger.debug(`Failed to kill Ralphy process: ${handle.label}`);
+        logger.debug(`Failed to kill Cheenoski process: ${handle.label}`);
       }
     }
-    this.ralphyKillHandles = [];
+    this.cheenoskiKillHandles = [];
   }
 }
 

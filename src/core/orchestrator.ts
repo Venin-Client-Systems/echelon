@@ -308,8 +308,8 @@ export class Orchestrator {
     this.shuttingDown = true;
     logger.info('Shutting down — killing subprocesses, saving state...');
 
-    // Kill Ralphy subprocesses
-    this.executor.killAllRalphy();
+    // Kill Cheenoski subprocesses
+    this.executor.killAll();
 
     this.state.status = 'paused';
     saveState(this.state);
