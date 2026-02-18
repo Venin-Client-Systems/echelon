@@ -34,8 +34,20 @@ export async function mergeBranch(
     await git(['merge-base', '--is-ancestor', baseBranch, featureBranch], repoPath);
   } catch {
     logger.info(`${featureBranch} diverged from ${baseBranch} — rebasing before merge`);
+
+    // First checkout the feature branch before rebasing
     try {
-      await git(['rebase', baseBranch, featureBranch], repoPath);
+      await git(['checkout', featureBranch], repoPath);
+    } catch (checkoutErr) {
+      const coMsg = checkoutErr instanceof Error ? checkoutErr.message : String(checkoutErr);
+      return {
+        success: false,
+        error: `Failed to checkout ${featureBranch}: ${coMsg}`,
+      };
+    }
+
+    try {
+      await git(['rebase', baseBranch], repoPath);
     } catch (rebaseErr) {
       // Rebase conflict — abort and report failure
       try { await git(['rebase', '--abort'], repoPath); } catch { /* best effort */ }
@@ -56,11 +68,24 @@ export async function mergeBranch(
 
   // 3. Stash any uncommitted changes in the main worktree
   let stashed = false;
+  let stashRef = '';
   const status = await git(['status', '--porcelain'], repoPath);
   if (status.length > 0) {
-    await git(['stash', 'push', '-m', `cheenoski-pre-merge-${issueNumber}`], repoPath);
-    stashed = true;
-    logger.debug('Stashed uncommitted changes before merge');
+    try {
+      await git(['stash', 'push', '-m', `cheenoski-pre-merge-${issueNumber}`], repoPath);
+      // Get the stash ref for safer restoration
+      const stashList = await git(['stash', 'list'], repoPath);
+      const stashMatch = stashList.match(/^(stash@\{\d+\})/);
+      stashRef = stashMatch ? stashMatch[1] : 'stash@{0}';
+      stashed = true;
+      logger.debug('Stashed uncommitted changes before merge');
+    } catch (stashErr) {
+      logger.warn(`Failed to stash changes: ${stashErr instanceof Error ? stashErr.message : stashErr}`);
+      return {
+        success: false,
+        error: `Cannot merge with dirty working tree and stash failed`,
+      };
+    }
   }
 
   // 4. Save current branch so we can restore it after merging
@@ -122,10 +147,12 @@ export async function mergeBranch(
     // Restore stash if we stashed
     if (stashed) {
       try {
-        await git(['stash', 'pop'], repoPath);
+        // Use the stash ref if we have it, otherwise fall back to stash@{0}
+        const ref = stashRef || 'stash@{0}';
+        await git(['stash', 'pop', ref], repoPath);
         logger.debug('Restored stashed changes after merge');
-      } catch {
-        logger.warn('Failed to restore stash after merge — check git stash list');
+      } catch (popErr) {
+        logger.warn(`Failed to restore stash after merge: ${popErr instanceof Error ? popErr.message : popErr} — check git stash list`);
       }
     }
   }
@@ -180,9 +207,13 @@ export async function createPullRequest(
   repoPath?: string,
 ): Promise<{ number: number; url: string }> {
   // Push the branch first (cwd must be in the git repo)
-  await execFileAsync('git', [
-    'push', '-u', 'origin', featureBranch,
-  ], { encoding: 'utf-8', ...(repoPath ? { cwd: repoPath } : {}) });
+  try {
+    await execFileAsync('git', [
+      'push', '-u', 'origin', featureBranch,
+    ], { encoding: 'utf-8', ...(repoPath ? { cwd: repoPath } : {}) });
+  } catch (pushErr) {
+    throw new Error(`Failed to push branch ${featureBranch}: ${pushErr instanceof Error ? pushErr.message : pushErr}`);
+  }
 
   const args = [
     'pr', 'create',
@@ -194,11 +225,15 @@ export async function createPullRequest(
   ];
   if (draft) args.push('--draft');
 
-  const { stdout } = await execFileAsync('gh', args, { encoding: 'utf-8' });
-  const url = stdout.trim();
-  const match = url.match(/\/pull\/(\d+)/);
-  const number = match ? parseInt(match[1], 10) : 0;
+  try {
+    const { stdout } = await execFileAsync('gh', args, { encoding: 'utf-8' });
+    const url = stdout.trim();
+    const match = url.match(/\/pull\/(\d+)/);
+    const number = match ? parseInt(match[1], 10) : 0;
 
-  logger.info(`PR created: ${url}`);
-  return { number, url };
+    logger.info(`PR created: ${url}`);
+    return { number, url };
+  } catch (ghErr) {
+    throw new Error(`Failed to create PR: ${ghErr instanceof Error ? ghErr.message : ghErr}`);
+  }
 }

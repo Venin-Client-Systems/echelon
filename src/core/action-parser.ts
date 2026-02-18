@@ -96,7 +96,11 @@ export function stripActionBlocks(text: string): string {
       const block = text.slice(contentStart, closerMatch.index).trim();
       try {
         const json = JSON.parse(block);
-        if (json && typeof json === 'object' && 'action' in json) {
+        const isActionBlock = (j: unknown): boolean => {
+          if (Array.isArray(j)) return j.some(item => item && typeof item === 'object' && 'action' in item);
+          return j != null && typeof j === 'object' && 'action' in j;
+        };
+        if (isActionBlock(json)) {
           ranges.push([openerMatch.index, closerMatch.index + closerMatch[0].length]);
           openerRegex.lastIndex = closerMatch.index + closerMatch[0].length;
         }

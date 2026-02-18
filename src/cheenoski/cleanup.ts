@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { logger } from '../lib/logger.js';
 
 const execFileAsync = promisify(execFile);
@@ -66,6 +67,17 @@ export async function reapOrphanedProcesses(): Promise<number> {
                 const ppid = parseInt(ppidOut.trim(), 10);
                 if (ppid === 1 || ppid === process.pid) {
                     process.kill(pid, 'SIGTERM');
+
+                    // Allow graceful shutdown, then escalate to SIGKILL if still alive
+                    await sleep(500);
+                    try {
+                        process.kill(pid, 0); // Check if still running
+                        process.kill(pid, 'SIGKILL');
+                        logger.debug(`Escalated to SIGKILL for process ${pid}: ${command.slice(0, 80)}`);
+                    } catch {
+                        // Process already exited after SIGTERM — good
+                    }
+
                     killed++;
                     logger.debug(`Killed orphaned process ${pid}: ${command.slice(0, 80)}`);
                 }

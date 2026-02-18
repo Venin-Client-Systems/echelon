@@ -11,25 +11,30 @@ export async function fetchIssuesByLabel(
   label: string,
   limit = 50,
 ): Promise<CheenoskiIssue[]> {
-  const { stdout } = await execFileAsync('gh', [
-    'issue', 'list',
-    '--repo', repo,
-    '--label', label,
-    '--state', 'open',
-    '--limit', String(limit),
-    '--json', 'number,title,body,labels,state,assignees,url',
-  ], { encoding: 'utf-8' });
+  try {
+    const { stdout } = await execFileAsync('gh', [
+      'issue', 'list',
+      '--repo', repo,
+      '--label', label,
+      '--state', 'open',
+      '--limit', String(limit),
+      '--json', 'number,title,body,labels,state,assignees,url',
+    ], { encoding: 'utf-8' });
 
-  const raw = JSON.parse(stdout);
-  return raw.map((issue: any) => ({
-    number: issue.number,
-    title: issue.title,
-    body: issue.body,
-    labels: issue.labels.map((l: any) => l.name),
-    state: issue.state.toLowerCase(),
-    assignees: issue.assignees.map((a: any) => a.login),
-    url: issue.url,
-  }));
+    const raw = JSON.parse(stdout);
+    return raw.map((issue: any) => ({
+      number: issue.number,
+      title: issue.title,
+      body: issue.body,
+      labels: (issue.labels ?? []).map((l: any) => l.name),
+      state: issue.state.toLowerCase(),
+      assignees: issue.assignees.map((a: any) => a.login),
+      url: issue.url,
+    }));
+  } catch (err) {
+    logger.warn(`Failed to fetch issues for label "${label}" in ${repo}: ${err}`);
+    return [];
+  }
 }
 
 /** Close an issue with a comment */
@@ -39,11 +44,15 @@ export async function closeIssue(
   comment?: string,
 ): Promise<void> {
   if (comment) {
-    await execFileAsync('gh', [
-      'issue', 'comment', String(issueNumber),
-      '--repo', repo,
-      '--body', comment,
-    ], { encoding: 'utf-8' });
+    try {
+      await execFileAsync('gh', [
+        'issue', 'comment', String(issueNumber),
+        '--repo', repo,
+        '--body', comment,
+      ], { encoding: 'utf-8' });
+    } catch (err) {
+      logger.warn(`Failed to comment on issue #${issueNumber}: ${err}`);
+    }
   }
 
   await execFileAsync('gh', [

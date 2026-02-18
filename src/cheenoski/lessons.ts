@@ -11,8 +11,12 @@ function migrateLegacy(repoPath: string): void {
     const newPath = join(repoPath, LESSONS_FILENAME);
 
     if (existsSync(legacyPath) && !existsSync(newPath)) {
-        renameSync(legacyPath, newPath);
-        logger.info(`Migrated ${LEGACY_FILENAME} → ${LESSONS_FILENAME}`);
+        try {
+            renameSync(legacyPath, newPath);
+            logger.info(`Migrated ${LEGACY_FILENAME} → ${LESSONS_FILENAME}`);
+        } catch (err) {
+            logger.warn(`Failed to migrate lessons file: ${err instanceof Error ? err.message : err}`);
+        }
     }
 }
 
@@ -22,7 +26,13 @@ export function readLessons(repoPath: string): string | null {
     const path = join(repoPath, LESSONS_FILENAME);
     if (!existsSync(path))
         return null;
-    return readFileSync(path, 'utf-8');
+
+    try {
+        return readFileSync(path, 'utf-8');
+    } catch (err) {
+        logger.warn(`Failed to read lessons file: ${err instanceof Error ? err.message : err}`);
+        return null;
+    }
 }
 
 /** Copy lessons file from main repo into a worktree */
@@ -48,14 +58,20 @@ export function addLesson(repoPath: string, lesson: string): void {
     const date = new Date().toISOString().split('T')[0];
 
     let content = '';
-    if (existsSync(path)) {
-        content = readFileSync(path, 'utf-8');
-    } else {
-        content = '# Lessons Learned\n\nAuto-maintained by Cheenoski. Do not edit manually.\n\n';
-    }
+    try {
+        if (existsSync(path)) {
+            content = readFileSync(path, 'utf-8');
+        } else {
+            content = '# Lessons Learned\n\nAuto-maintained by Cheenoski. Do not edit manually.\n\n';
+        }
 
-    content += `- **${date}**: ${lesson}\n`;
-    writeFileSync(path, content, 'utf-8');
+        // Sanitize lesson to prevent malformed markdown
+        const safeLeson = lesson.replace(/\n/g, ' ').slice(0, 500);
+        content += `- **${date}**: ${safeLeson}\n`;
+        writeFileSync(path, content, 'utf-8');
+    } catch (err) {
+        logger.warn(`Failed to add lesson: ${err instanceof Error ? err.message : err}`);
+    }
 }
 
 /** Merge lessons from a worktree back into the main repo */
@@ -66,22 +82,26 @@ export function mergeLessonsBack(worktreePath: string, repoPath: string): void {
     if (!existsSync(src))
         return;
 
-    const srcContent = readFileSync(src, 'utf-8');
-    const srcLines = new Set(srcContent.split('\n').filter(l => l.startsWith('- ')));
+    try {
+        const srcContent = readFileSync(src, 'utf-8');
+        const srcLines = new Set(srcContent.split('\n').filter(l => l.startsWith('- ')));
 
-    let dstContent = '';
-    if (existsSync(dst)) {
-        dstContent = readFileSync(dst, 'utf-8');
-    } else {
-        dstContent = '# Lessons Learned\n\nAuto-maintained by Cheenoski. Do not edit manually.\n\n';
-    }
+        let dstContent = '';
+        if (existsSync(dst)) {
+            dstContent = readFileSync(dst, 'utf-8');
+        } else {
+            dstContent = '# Lessons Learned\n\nAuto-maintained by Cheenoski. Do not edit manually.\n\n';
+        }
 
-    const dstLines = new Set(dstContent.split('\n').filter(l => l.startsWith('- ')));
+        const dstLines = new Set(dstContent.split('\n').filter(l => l.startsWith('- ')));
 
-    const newLessons = [...srcLines].filter(l => !dstLines.has(l));
-    if (newLessons.length > 0) {
-        dstContent += newLessons.join('\n') + '\n';
-        writeFileSync(dst, dstContent, 'utf-8');
-        logger.debug(`Merged ${newLessons.length} new lesson(s) from worktree`);
+        const newLessons = [...srcLines].filter(l => !dstLines.has(l));
+        if (newLessons.length > 0) {
+            dstContent += newLessons.join('\n') + '\n';
+            writeFileSync(dst, dstContent, 'utf-8');
+            logger.debug(`Merged ${newLessons.length} new lesson(s) from worktree`);
+        }
+    } catch (err) {
+        logger.warn(`Failed to merge lessons back: ${err instanceof Error ? err.message : err}`);
     }
 }

@@ -86,9 +86,11 @@ export function slugify(title: string): string {
             break;
         }
     }
-    return cleaned
+    const result = cleaned
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 50);
+
+    return result || 'task';
 }

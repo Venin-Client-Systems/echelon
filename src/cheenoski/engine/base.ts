@@ -7,6 +7,7 @@ import type { EngineRunner, EngineRunOptions, EngineResult, EngineName } from '.
 import { parseStreamJson, parseJsonOutput, isRateLimitError, errorResult } from './result-parser.js';
 
 const SIGKILL_DELAY_MS = 5_000;
+const MAX_OUTPUT_BYTES = 50 * 1024 * 1024; // 50 MB
 
 export type ParserType = 'stream-json' | 'json';
 
@@ -58,6 +59,8 @@ export class BaseEngine implements EngineRunner {
     return new Promise<EngineResult>((resolve) => {
       const chunks: Buffer[] = [];
       const errChunks: Buffer[] = [];
+      let totalBytes = 0;
+      let totalErrBytes = 0;
       let killed = false;
       let killTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -67,14 +70,33 @@ export class BaseEngine implements EngineRunner {
         stdio: [this.spec.useStdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
       });
 
+      // Attach error handler immediately to prevent unhandled rejections
+      this.proc.on('error', (err) => {
+        clearTimeout(timer);
+        if (killTimer) clearTimeout(killTimer);
+        if (promptFile) this.cleanupPromptFile(promptFile);
+        resolve(errorResult(this.spec.name, 'crash', err.message, Date.now() - start));
+      });
+
       // Pipe prompt via stdin if configured
       if (this.spec.useStdin && this.proc.stdin) {
         this.proc.stdin.write(opts.prompt);
         this.proc.stdin.end();
       }
 
-      this.proc.stdout!.on('data', (chunk: Buffer) => chunks.push(chunk));
-      this.proc.stderr!.on('data', (chunk: Buffer) => errChunks.push(chunk));
+      this.proc.stdout!.on('data', (chunk: Buffer) => {
+        if (totalBytes < MAX_OUTPUT_BYTES) {
+          chunks.push(chunk);
+          totalBytes += chunk.length;
+        }
+        // else: keep consuming to prevent backpressure, but don't buffer
+      });
+      this.proc.stderr!.on('data', (chunk: Buffer) => {
+        if (totalErrBytes < MAX_OUTPUT_BYTES) {
+          errChunks.push(chunk);
+          totalErrBytes += chunk.length;
+        }
+      });
 
       const timer = setTimeout(() => {
         killed = true;
@@ -120,22 +142,17 @@ export class BaseEngine implements EngineRunner {
           rawExitCode: code,
         });
       });
-
-      this.proc.on('error', (err) => {
-        clearTimeout(timer);
-        if (promptFile) this.cleanupPromptFile(promptFile);
-        resolve(errorResult(this.spec.name, 'crash', err.message, Date.now() - start));
-      });
     });
   }
 
   kill(): void {
     if (this.proc) {
-      this.proc.kill('SIGTERM');
-      setTimeout(() => {
-        try { this.proc?.kill('SIGKILL'); } catch { /* dead */ }
-      }, SIGKILL_DELAY_MS);
+      const proc = this.proc;
       this.proc = null;
+      proc.kill('SIGTERM');
+      setTimeout(() => {
+        try { proc.kill('SIGKILL'); } catch { /* dead */ }
+      }, SIGKILL_DELAY_MS);
     }
   }
 

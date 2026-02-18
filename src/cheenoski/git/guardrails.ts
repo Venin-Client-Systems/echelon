@@ -101,16 +101,45 @@ export async function scanOrphanedWorktrees(repoPath: string): Promise<string[]>
   return orphans;
 }
 
-/** Clean up orphaned worktrees */
+/** Clean up orphaned worktrees and their associated branches */
 export async function cleanOrphanedWorktrees(repoPath: string): Promise<number> {
   const orphans = await scanOrphanedWorktrees(repoPath);
   let cleaned = 0;
 
   for (const wtPath of orphans) {
+    // Extract branch name from the worktree path (more reliable than basename)
+    let branchName = basename(wtPath);
+
     try {
+      // First, try to get the actual branch name from git
+      try {
+        const output = await git(['worktree', 'list', '--porcelain'], repoPath);
+        const blocks = output.split('\n\n');
+        for (const block of blocks) {
+          const lines = block.split('\n');
+          const wtLine = lines.find(l => l.startsWith('worktree ') && l.includes(wtPath));
+          if (wtLine) {
+            const branchLine = lines.find(l => l.startsWith('branch '));
+            if (branchLine) {
+              branchName = branchLine.replace('branch refs/heads/', '');
+            }
+            break;
+          }
+        }
+      } catch { /* use basename fallback */ }
+
       await git(['worktree', 'remove', '--force', wtPath], repoPath);
       cleaned++;
       logger.info(`Cleaned orphaned worktree: ${wtPath}`);
+
+      // Also delete the associated branch to prevent branch accumulation
+      try {
+        await git(['branch', '-D', branchName], repoPath);
+        logger.info(`Deleted orphaned branch: ${branchName}`);
+      } catch {
+        // Branch may already be gone or named differently — not critical
+        logger.debug(`Could not delete branch ${branchName} (may already be gone)`);
+      }
     } catch (err) {
       logger.warn(`Failed to clean orphaned worktree ${wtPath}: ${err instanceof Error ? err.message : err}`);
     }

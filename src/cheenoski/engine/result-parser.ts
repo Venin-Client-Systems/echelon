@@ -25,10 +25,21 @@ export function parseStreamJson(output: string): { toolsUsed: string[]; filesCha
   const toolsUsed = new Set<string>();
   const filesChanged = new Set<string>();
 
+  // Buffer for incomplete JSON lines
+  let buffer = '';
+
   for (const line of output.split('\n')) {
-    if (!line.trim()) continue;
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // Accumulate into buffer
+    buffer += trimmed;
+
     try {
-      const obj = JSON.parse(line);
+      const obj = JSON.parse(buffer);
+
+      // Successfully parsed — reset buffer
+      buffer = '';
 
       // Claude Code stream-json: tool_use is nested in message.content
       if (obj.type === 'assistant' && obj.message?.content) {
@@ -61,7 +72,11 @@ export function parseStreamJson(output: string): { toolsUsed: string[]; filesCha
         }
       }
     } catch {
-      // Not JSON — skip
+      // Incomplete JSON — keep buffering
+      // If buffer gets too large (>1MB), reset to prevent memory issues
+      if (buffer.length > 1_000_000) {
+        buffer = '';
+      }
     }
   }
 
@@ -101,13 +116,16 @@ export function parseJsonOutput(output: string): { toolsUsed: string[]; filesCha
  * Only checks stderr (not stdout) to avoid false positives from agent output text.
  */
 export function isRateLimitError(stderr: string, exitCode: number | null): boolean {
+  // POSIX exit codes are 0-255; 429 wraps to 173 (429 % 256)
+  if (exitCode === 429 || exitCode === 173) return true;
+
   const lower = stderr.toLowerCase();
   return (
-    exitCode === 429 ||
     lower.includes('rate limit') ||
     lower.includes('rate_limit') ||
     lower.includes('too many requests') ||
-    lower.includes('quota exceeded')
+    lower.includes('quota exceeded') ||
+    lower.includes('429')
   );
 }
 

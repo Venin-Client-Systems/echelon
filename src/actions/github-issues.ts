@@ -11,6 +11,17 @@ export interface CreatedIssue {
   labels: string[];
 }
 
+/** Validate repo format (owner/repo) */
+function isValidRepo(repo: string): boolean {
+  return /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(repo);
+}
+
+/** Sanitize string for safe use in CLI args */
+function sanitizeString(str: string): string {
+  // Remove null bytes and control characters
+  return str.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '');
+}
+
 /**
  * Ensure labels exist on the repo — create any that are missing.
  */
@@ -35,11 +46,15 @@ export async function createIssues(
   issues: IssuePayload[],
   repo: string,
 ): Promise<CreatedIssue[]> {
+  if (!isValidRepo(repo)) {
+    throw new Error(`Invalid repo format: "${repo}". Expected owner/repo`);
+  }
+
   // Collect all unique labels and ensure they exist
   const allLabels = new Set<string>();
   for (const issue of issues) {
     for (const label of issue.labels) {
-      allLabels.add(label);
+      allLabels.add(sanitizeString(label));
     }
   }
   if (allLabels.size > 0) {
@@ -50,19 +65,30 @@ export async function createIssues(
 
   for (const issue of issues) {
     try {
+      // Sanitize all user inputs
+      const title = sanitizeString(issue.title);
+      const body = sanitizeString(issue.body);
+      const labels = issue.labels.map(sanitizeString);
+      const assignee = issue.assignee ? sanitizeString(issue.assignee) : undefined;
+
+      if (!title.trim()) {
+        logger.warn('Skipping issue with empty title');
+        continue;
+      }
+
       const args = [
         'issue', 'create',
         '--repo', repo,
-        '--title', issue.title,
-        '--body', issue.body,
+        '--title', title,
+        '--body', body,
       ];
 
-      if (issue.labels.length > 0) {
-        args.push('--label', issue.labels.join(','));
+      if (labels.length > 0) {
+        args.push('--label', labels.join(','));
       }
 
-      if (issue.assignee) {
-        args.push('--assignee', issue.assignee);
+      if (assignee) {
+        args.push('--assignee', assignee);
       }
 
       const { stdout } = await execFileAsync('gh', args, { encoding: 'utf-8' });
@@ -91,6 +117,14 @@ export async function createIssues(
  * Close a GitHub issue.
  */
 export async function closeIssue(issueNumber: number, repo: string): Promise<void> {
+  if (!isValidRepo(repo)) {
+    throw new Error(`Invalid repo format: "${repo}". Expected owner/repo`);
+  }
+
+  if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
+    throw new Error(`Invalid issue number: ${issueNumber}`);
+  }
+
   try {
     await execFileAsync('gh', ['issue', 'close', String(issueNumber), '--repo', repo], {
       encoding: 'utf-8',

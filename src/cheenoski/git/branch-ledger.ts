@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
-import { appendFileSync, existsSync, readFileSync, readdirSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, mkdirSync, openSync, writeSync, closeSync } from 'node:fs';
 import type { LedgerEntry } from '../types.js';
 
 const CHEENOSKI_HOME = join(homedir(), '.cheenoski');
@@ -33,7 +33,22 @@ export function appendToLedger(entry: Omit<LedgerEntry, 'timestamp' | 'pid'>): v
     };
     const line = JSON.stringify(full) + '\n';
     const path = ledgerPath(entry.branch);
-    appendFileSync(path, line, 'utf-8');
+
+    // Use atomic append with O_APPEND flag for concurrent write safety
+    let fd: number | undefined;
+    try {
+        fd = openSync(path, 'a'); // O_APPEND flag
+        writeSync(fd, line, null, 'utf-8');
+    } catch (err) {
+        // Log error but don't throw - ledger is best-effort
+        console.warn(`Failed to append to ledger: ${err instanceof Error ? err.message : err}`);
+    } finally {
+        if (fd !== undefined) {
+            try {
+                closeSync(fd);
+            } catch { /* ignore close errors */ }
+        }
+    }
 }
 
 /** Read all ledger entries for a branch */

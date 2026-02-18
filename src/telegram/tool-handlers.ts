@@ -43,7 +43,11 @@ function getOrchestrator(config: EchelonConfig): Orchestrator {
   for (const cb of orchestratorListeners) {
     try {
       cb(activeOrchestrator);
-    } catch { /* best effort */ }
+    } catch (err) {
+      logger.error('Orchestrator listener error', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   return activeOrchestrator;
@@ -59,10 +63,12 @@ export async function executeCeoTool(
     switch (name) {
       case 'start_cascade': {
         const directive = input.directive as string;
-        if (!directive) return 'Error: directive is required';
+        if (!directive || typeof directive !== 'string' || directive.trim().length === 0) {
+          return 'Error: directive is required and must be a non-empty string';
+        }
         const orch = getOrchestrator(config);
         // Run cascade in background
-        orch.runCascade(directive).catch((err: unknown) => {
+        orch.runCascade(directive.trim()).catch((err: unknown) => {
           logger.error('Cascade error', {
             error: err instanceof Error ? err.message : String(err),
           });
@@ -101,6 +107,9 @@ export async function executeCeoTool(
       case 'approve_action': {
         const orch = getOrchestrator(config);
         const id = input.approval_id as string;
+        if (!id || typeof id !== 'string') {
+          return 'Error: approval_id is required and must be a string';
+        }
         if (id === 'all') {
           const results = await orch.executor.approveAll();
           return results.length > 0
@@ -114,6 +123,9 @@ export async function executeCeoTool(
       case 'reject_action': {
         const orch = getOrchestrator(config);
         const id = input.approval_id as string;
+        if (!id || typeof id !== 'string') {
+          return 'Error: approval_id is required and must be a string';
+        }
         const reason = (input.reason as string) || 'No reason given';
         orch.executor.reject(id, reason);
         return `Rejected action ${id}: ${reason}`;
@@ -142,6 +154,9 @@ export async function executeCeoTool(
 
       case 'ask_user': {
         const question = input.question as string;
+        if (!question || typeof question !== 'string' || question.trim().length === 0) {
+          return 'Error: question is required and must be a non-empty string';
+        }
         return `QUESTION_FOR_USER: ${question}`;
       }
 

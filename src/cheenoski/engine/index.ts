@@ -13,6 +13,12 @@ export function createEngine(name: EngineName): EngineRunner {
     case 'codex': return new CodexEngine();
     case 'cursor': return new CursorEngine();
     case 'qwen': return new QwenEngine();
+    default: {
+      // TypeScript exhaustiveness check ensures this is unreachable at compile time,
+      // but provide runtime safety in case of type system bypass or future changes
+      const exhaustive: never = name;
+      throw new Error(`Unknown engine: ${exhaustive}`);
+    }
   }
 }
 

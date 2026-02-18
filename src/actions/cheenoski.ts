@@ -7,7 +7,7 @@ import { logger } from '../lib/logger.js';
 const activeRunners = new Map<string, CheenoskiRunner>();
 
 /**
- * Invoke Cheenoski for a label. Replaces invokeRalphy.
+ * Invoke Cheenoski for a label.
  * Non-blocking: starts the runner and returns a kill handle.
  */
 export function invokeCheenoski(
@@ -17,6 +17,14 @@ export function invokeCheenoski(
   bus: MessageBus,
   onProgress?: (line: string) => void,
 ): { kill: () => void } {
+  // If a runner already exists for this label, kill it first
+  const existing = activeRunners.get(label);
+  if (existing) {
+    logger.warn(`Killing existing Cheenoski runner for label "${label}" before starting new one`);
+    existing.kill();
+    activeRunners.delete(label);
+  }
+
   const runner = new CheenoskiRunner(config, bus);
   activeRunners.set(label, runner);
 
@@ -36,13 +44,19 @@ export function invokeCheenoski(
       logger.error(`Cheenoski failed for ${label}`, { error: msg });
     })
     .finally(() => {
-      activeRunners.delete(label);
+      // Only delete if this runner is still the active one for the label
+      if (activeRunners.get(label) === runner) {
+        activeRunners.delete(label);
+      }
     });
 
   return {
     kill: () => {
       runner.kill();
-      activeRunners.delete(label);
+      // Only delete if this runner is still the active one for the label
+      if (activeRunners.get(label) === runner) {
+        activeRunners.delete(label);
+      }
       logger.info(`Killed Cheenoski runner for ${label}`);
     },
   };

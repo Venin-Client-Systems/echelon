@@ -38,8 +38,24 @@ async function ghGraphQL(query: string, variables: Record<string, string | numbe
             args.push('-f', `${key}=${value}`);
         }
     }
-    const { stdout } = await execFileAsync('gh', args, { encoding: 'utf-8' });
-    return JSON.parse(stdout);
+
+    try {
+        const { stdout } = await execFileAsync('gh', args, { encoding: 'utf-8' });
+        const result = JSON.parse(stdout);
+
+        // Check for GraphQL errors in response
+        if (result.errors && result.errors.length > 0) {
+            const errMsg = result.errors.map((e: any) => e.message).join(', ');
+            throw new Error(`GraphQL error: ${errMsg}`);
+        }
+
+        return result;
+    } catch (err) {
+        if (err instanceof Error && err.message.includes('GraphQL error')) {
+            throw err;
+        }
+        throw new Error(`gh CLI error: ${err instanceof Error ? err.message : String(err)}`);
+    }
 }
 
 /** Fetch project V2 metadata (project ID, field IDs, option IDs) */
@@ -138,7 +154,12 @@ async function updateSingleSelectField(projectId: string, itemId: string, fieldI
       projectV2Item { id }
     }
   }`;
-    await ghGraphQL(mutation, { projectId, itemId, fieldId, optionId });
+    try {
+        await ghGraphQL(mutation, { projectId, itemId, fieldId, optionId });
+    } catch (err) {
+        logger.warn(`Failed to update single-select field: ${err instanceof Error ? err.message : err}`);
+        throw err;
+    }
 }
 
 /** Update a text field on a project item */
@@ -153,55 +174,68 @@ async function updateTextField(projectId: string, itemId: string, fieldId: strin
       projectV2Item { id }
     }
   }`;
-    await ghGraphQL(mutation, { projectId, itemId, fieldId, textValue: value });
+    try {
+        await ghGraphQL(mutation, { projectId, itemId, fieldId, textValue: value });
+    } catch (err) {
+        logger.warn(`Failed to update text field: ${err instanceof Error ? err.message : err}`);
+        throw err;
+    }
 }
 
 /** Update the status field for an issue on the project board */
 export async function updateIssueStatus(repo: string, config: ProjectBoardConfig, issueNumber: number, status: string): Promise<void> {
-    const meta = await getProjectMetadata(repo, config.projectNumber);
-    if (!meta)
-        return;
+    try {
+        const meta = await getProjectMetadata(repo, config.projectNumber);
+        if (!meta)
+            return;
 
-    const itemId = await getProjectItemId(repo, config.projectNumber, issueNumber);
-    if (!itemId) {
-        logger.debug(`Issue #${issueNumber} not on project board`);
-        return;
+        const itemId = await getProjectItemId(repo, config.projectNumber, issueNumber);
+        if (!itemId) {
+            logger.debug(`Issue #${issueNumber} not on project board`);
+            return;
+        }
+
+        const fieldName = config.statusField || 'Status';
+        const field = meta.fields.get(fieldName);
+        if (!field?.options) {
+            logger.debug(`Status field "${fieldName}" not found or has no options`);
+            return;
+        }
+
+        const option = field.options.find(o => o?.name?.toLowerCase() === status.toLowerCase());
+        if (!option || !option.id) {
+            logger.debug(`Status option "${status}" not found in field "${fieldName}"`);
+            return;
+        }
+
+        await updateSingleSelectField(meta.projectId, itemId, field.id, option.id);
+        logger.debug(`Updated issue #${issueNumber} status to "${status}"`);
+    } catch (err) {
+        logger.warn(`Failed to update issue status for #${issueNumber}: ${err instanceof Error ? err.message : err}`);
     }
-
-    const fieldName = config.statusField || 'Status';
-    const field = meta.fields.get(fieldName);
-    if (!field?.options) {
-        logger.debug(`Status field "${fieldName}" not found or has no options`);
-        return;
-    }
-
-    const option = field.options.find(o => o.name.toLowerCase() === status.toLowerCase());
-    if (!option) {
-        logger.debug(`Status option "${status}" not found in field "${fieldName}"`);
-        return;
-    }
-
-    await updateSingleSelectField(meta.projectId, itemId, field.id, option.id);
-    logger.debug(`Updated issue #${issueNumber} status to "${status}"`);
 }
 
 /** Update the branch field for an issue on the project board */
 export async function updateIssueBranch(repo: string, config: ProjectBoardConfig, issueNumber: number, branchName: string): Promise<void> {
-    const meta = await getProjectMetadata(repo, config.projectNumber);
-    if (!meta)
-        return;
+    try {
+        const meta = await getProjectMetadata(repo, config.projectNumber);
+        if (!meta)
+            return;
 
-    const itemId = await getProjectItemId(repo, config.projectNumber, issueNumber);
-    if (!itemId)
-        return;
+        const itemId = await getProjectItemId(repo, config.projectNumber, issueNumber);
+        if (!itemId)
+            return;
 
-    const fieldName = config.branchField || 'Branch';
-    const field = meta.fields.get(fieldName);
-    if (!field)
-        return;
+        const fieldName = config.branchField || 'Branch';
+        const field = meta.fields.get(fieldName);
+        if (!field || !field.id)
+            return;
 
-    await updateTextField(meta.projectId, itemId, field.id, branchName);
-    logger.debug(`Updated issue #${issueNumber} branch to "${branchName}"`);
+        await updateTextField(meta.projectId, itemId, field.id, branchName);
+        logger.debug(`Updated issue #${issueNumber} branch to "${branchName}"`);
+    } catch (err) {
+        logger.warn(`Failed to update issue branch for #${issueNumber}: ${err instanceof Error ? err.message : err}`);
+    }
 }
 
 /** Clear the project metadata cache */

@@ -59,8 +59,8 @@ export class Orchestrator {
         case 'issue_created':
           logger.info(`Issue #${event.issue.number}: ${event.issue.title}`);
           break;
-        case 'ralphy_progress':
-          logger.debug(`[Ralphy:${event.label}] ${event.line}`);
+        case 'cheenoski_progress':
+          logger.debug(`[Cheenoski:${event.label}] ${event.line}`);
           break;
         case 'error':
           logger.error(`[${event.role}] ${event.error}`);
@@ -77,6 +77,8 @@ export class Orchestrator {
     }
     this.cascadeRunning = true;
     this.state.directive = directive;
+    this.state.status = 'running';
+    saveState(this.state);
 
     if (this.dryRun) {
       this.printDryRun(directive);
@@ -93,33 +95,75 @@ export class Orchestrator {
 
     // Install signal handlers once
     if (!this.signalHandlersInstalled) {
-      process.once('SIGINT', this.boundShutdown);
-      process.once('SIGTERM', this.boundShutdown);
+      process.on('SIGINT', this.boundShutdown);
+      process.on('SIGTERM', this.boundShutdown);
       this.signalHandlersInstalled = true;
     }
 
     try {
       // Phase 1: CEO → 2IC (strategy)
       const strategyMsg = await this.runLayer('2ic', 'ceo', directive);
-      if (this.shuttingDown || !strategyMsg) return;
+      if (this.shuttingDown || !strategyMsg) {
+        this.state.status = 'paused';
+        saveState(this.state);
+        return;
+      }
+
+      // Validate layer output before proceeding
+      if (!this.validateLayerOutput(strategyMsg)) {
+        logger.error('Strategy message validation failed — aborting cascade');
+        this.state.status = 'failed';
+        saveState(this.state);
+        return;
+      }
 
       // Phase 2: 2IC → Eng Lead (technical design)
       const designInput = this.buildDownwardPrompt(strategyMsg);
       let designMsg = await this.runLayer('eng-lead', '2ic', designInput);
-      if (this.shuttingDown || !designMsg) return;
+      if (this.shuttingDown || !designMsg) {
+        this.state.status = 'paused';
+        saveState(this.state);
+        return;
+      }
+
+      if (!this.validateLayerOutput(designMsg)) {
+        logger.error('Design message validation failed — aborting cascade');
+        this.state.status = 'failed';
+        saveState(this.state);
+        return;
+      }
 
       // Loopback: if Eng Lead asked 2IC questions, answer them
       designMsg = await this.resolveInfoRequests(designMsg, 'eng-lead');
-      if (this.shuttingDown || !designMsg) return;
+      if (this.shuttingDown || !designMsg) {
+        this.state.status = 'paused';
+        saveState(this.state);
+        return;
+      }
 
       // Phase 3: Eng Lead → Team Lead (issue creation + execution)
       const execInput = this.buildDownwardPrompt(designMsg, 'team-lead');
       let execMsg = await this.runLayer('team-lead', 'eng-lead', execInput);
-      if (this.shuttingDown || !execMsg) return;
+      if (this.shuttingDown || !execMsg) {
+        this.state.status = 'paused';
+        saveState(this.state);
+        return;
+      }
+
+      if (!this.validateLayerOutput(execMsg)) {
+        logger.error('Execution message validation failed — aborting cascade');
+        this.state.status = 'failed';
+        saveState(this.state);
+        return;
+      }
 
       // Loopback: if Team Lead asked Eng Lead questions, answer them
       execMsg = await this.resolveInfoRequests(execMsg, 'team-lead');
-      if (this.shuttingDown || !execMsg) return;
+      if (this.shuttingDown || !execMsg) {
+        this.state.status = 'paused';
+        saveState(this.state);
+        return;
+      }
 
       // Process any pending approvals in headless mode
       if (this.executor.getPending().length > 0) {
@@ -186,6 +230,7 @@ export class Orchestrator {
               maxTurns,
               timeoutMs: layerConfig.timeoutMs,
               cwd: this.config.project.path,
+              maxBudgetUsd: layerConfig.maxBudgetUsd - agentState.totalCost,
             })
           : spawnAgent(input, {
               model: layerConfig.model,
@@ -261,7 +306,9 @@ export class Orchestrator {
       agentState.lastError = errMsg;
       updateAgentStatus(this.state, role, 'error');
       this.bus.emitEchelon({ type: 'error', role, error: errMsg });
+      this.state.status = 'failed';
       saveState(this.state);
+      logger.error(`Layer ${LAYER_LABELS[role]} failed, cascade aborted`, { error: errMsg });
       return null;
     }
   }
@@ -277,8 +324,24 @@ export class Orchestrator {
       narrative,
     ];
 
+    // Include update_plan content so downstream layers see the actual plan
+    for (const action of upstreamMsg.actions) {
+      if (action.action === 'update_plan') {
+        parts.push('', '## Plan', '', action.plan);
+        if (action.workstreams && action.workstreams.length > 0) {
+          parts.push('', '## Workstreams');
+          for (const ws of action.workstreams) {
+            parts.push(`- ${ws}`);
+          }
+        }
+      }
+    }
+
     if (upstreamMsg.actions.length > 0) {
-      parts.push('', `They have also initiated these actions: ${upstreamMsg.actions.map(a => a.action).join(', ')}`);
+      const nonPlanActions = upstreamMsg.actions.filter(a => a.action !== 'update_plan');
+      if (nonPlanActions.length > 0) {
+        parts.push('', `They have also initiated these actions: ${nonPlanActions.map(a => a.action).join(', ')}`);
+      }
     }
 
     // Specific instructions for the Team Lead
@@ -371,7 +434,9 @@ export class Orchestrator {
       round: round + 1,
     });
 
-    const updatedMsg = await this.runLayer(requestingRole, 'eng-lead', answerPrompt);
+    // Determine the correct upstream role to pass as 'from' parameter
+    const upstreamRole = this.getUpstreamRole(requestingRole);
+    const updatedMsg = await this.runLayer(requestingRole, upstreamRole, answerPrompt);
     if (this.shuttingDown || !updatedMsg) return null;
 
     // Recursively resolve if new questions were asked (up to MAX_LOOPBACK_ROUNDS)
@@ -406,6 +471,28 @@ export class Orchestrator {
     }
   }
 
+  /** Get the upstream role for a given layer */
+  private getUpstreamRole(role: LayerId): AgentRole {
+    switch (role) {
+      case 'eng-lead': return '2ic';
+      case 'team-lead': return 'eng-lead';
+      default: throw new Error(`No upstream role for: ${role}`);
+    }
+  }
+
+  /** Validate layer output before passing downstream */
+  private validateLayerOutput(msg: LayerMessage): boolean {
+    if (!msg.content || msg.content.trim().length === 0) {
+      logger.warn(`Empty content from ${msg.from}`);
+      return false;
+    }
+    if (msg.costUsd < 0) {
+      logger.warn(`Invalid cost from ${msg.from}: ${msg.costUsd}`);
+      return false;
+    }
+    return true;
+  }
+
   /** Print dry-run information */
   private printDryRun(directive: string): void {
     console.log('\n=== DRY RUN ===\n');
@@ -420,11 +507,11 @@ export class Orchestrator {
     console.log(`     Model: ${this.config.layers['eng-lead'].model}, Budget: $${this.config.layers['eng-lead'].maxBudgetUsd}`);
     console.log('  3. Eng Lead → Team Lead: Issue creation + execution');
     console.log(`     Model: ${this.config.layers['team-lead'].model}, Budget: $${this.config.layers['team-lead'].maxBudgetUsd}`);
-    console.log(`  4. Team Lead → Engineers: Ralphy (max ${this.config.engineers.maxParallel} parallel)`);
+    console.log(`  4. Team Lead → Engineers: Cheenoski (max ${this.config.engineers.maxParallel} parallel)`);
     console.log('\n=== END DRY RUN ===\n');
   }
 
-  /** Graceful shutdown — kills Ralphy subprocesses, saves state */
+  /** Graceful shutdown — kills Cheenoski subprocesses, saves state */
   shutdown(): void {
     if (this.shuttingDown) return;
     this.shuttingDown = true;
@@ -446,6 +533,9 @@ export class Orchestrator {
     process.removeListener('SIGINT', this.boundShutdown);
     process.removeListener('SIGTERM', this.boundShutdown);
     this.signalHandlersInstalled = false;
+
+    // Exit the process — without this, Node stays alive after SIGTERM/SIGINT
+    process.exit(0);
   }
 
   /** For headless approval: approve all pending */

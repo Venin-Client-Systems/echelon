@@ -76,7 +76,33 @@ export async function runWithFallback(
       continue;
     }
 
-    const engine = createEngine(engineName);
+    let engine: EngineRunner;
+    try {
+      engine = createEngine(engineName);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error(`Failed to create ${engineName} engine: ${errMsg}`);
+
+      // Try next engine in chain
+      const next = chain[i + 1];
+      if (next) {
+        onSwitch?.(engineName, next, `engine creation failed: ${errMsg}`);
+        continue;
+      }
+
+      // No more fallbacks
+      return {
+        success: false,
+        output: `Failed to create ${engineName}: ${errMsg}`,
+        toolsUsed: [],
+        filesChanged: [],
+        durationMs: 0,
+        engineName,
+        errorType: 'crash',
+        rawExitCode: null,
+      };
+    }
+
     onEngineCreated?.(engine);
     const result = await engine.run(opts);
 

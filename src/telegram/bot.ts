@@ -2,7 +2,8 @@ import { Bot } from 'grammy';
 import type { EchelonConfig } from '../lib/types.js';
 import { logger } from '../lib/logger.js';
 import { handleMessage, hasPendingQuestion, resolvePendingQuestion } from './handler.js';
-import { escapeHtml, splitMessage } from './notifications.js';
+import { escapeHtml, splitMessage, formatEventForTelegram } from './notifications.js';
+import { executeCeoTool, onOrchestratorCreated } from './tool-handlers.js';
 
 let _bot: Bot | null = null;
 let _chatId: string | null = null;
@@ -35,37 +36,66 @@ export function createTelegramBot(config: EchelonConfig): Bot {
   _chatId = chatId;
   _bot = new Bot(botToken);
 
-  // Auth middleware — only respond to the configured chat
+  // Auth middleware — verify chat ID and user ID
+  const allowedUserIds = process.env.ECHELON_TELEGRAM_ALLOWED_USERS?.split(',').map(s => s.trim())
+    ?? tgConfig.allowedUserIds
+    ?? [];
+
   _bot.use(async (ctx, next) => {
     if (String(ctx.chat?.id) !== chatId) {
-      logger.warn('Unauthorized Telegram message', { chatId: ctx.chat?.id });
+      logger.warn('Unauthorized Telegram message — wrong chat', { chatId: ctx.chat?.id });
       return; // Silently ignore
     }
+
+    // In group chats, ctx.chat.id is the group ID, not the user ID.
+    // Check ctx.from.id against allowed users if configured.
+    const fromUserId = ctx.from?.id ? String(ctx.from.id) : undefined;
+    const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
+
+    if (isGroup) {
+      logger.warn('Message received in group chat', {
+        chatId: ctx.chat?.id,
+        fromUserId,
+        chatType: ctx.chat?.type,
+      });
+    }
+
+    if (allowedUserIds.length > 0 && fromUserId && !allowedUserIds.includes(fromUserId)) {
+      logger.warn('Unauthorized Telegram user', { fromUserId, chatId: ctx.chat?.id });
+      return; // Silently ignore
+    }
+
     await next();
   });
 
   // Handle text messages
   _bot.on('message:text', async (ctx) => {
-    const text = ctx.message.text.trim();
-    if (!text) return;
-    logger.debug('Telegram message received', { text: text.slice(0, 80) });
-
-    // If there's a pending ask_user question, resolve it instead of starting new handleMessage
-    if (hasPendingQuestion()) {
-      const resolved = resolvePendingQuestion(text);
-      if (resolved) {
-        logger.debug('Resolved pending question with user reply');
-        return; // The in-flight handleMessage will continue and send its own response
-      }
-    }
-
     try {
-      const response = await enqueueMessage(text, config);
-      await sendTelegramMessage(response);
+      const text = ctx.message.text.trim();
+      if (!text) return;
+      logger.debug('Telegram message received', { text: text.slice(0, 80) });
+
+      // If there's a pending ask_user question, resolve it instead of starting new handleMessage
+      if (hasPendingQuestion()) {
+        const resolved = resolvePendingQuestion(text);
+        if (resolved) {
+          logger.debug('Resolved pending question with user reply');
+          return; // The in-flight handleMessage will continue and send its own response
+        }
+      }
+
+      try {
+        const response = await enqueueMessage(text, config);
+        await sendTelegramMessage(response);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error('Telegram handler error', { error: msg });
+        await sendTelegramMessage(`Error: ${escapeHtml(msg)}`);
+      }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.error('Telegram handler error', { error: msg });
-      await sendTelegramMessage(`Error: ${escapeHtml(msg)}`);
+      logger.error('Fatal message handler error', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   });
 
@@ -80,6 +110,75 @@ export function createTelegramBot(config: EchelonConfig): Bot {
         '/cost — Current cost breakdown\n' +
         '/quit — Shutdown gracefully',
     );
+  });
+
+  // Handle /status command
+  _bot.command('status', async (ctx) => {
+    try {
+      const result = await executeCeoTool('cascade_status', {}, config);
+      await ctx.reply(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('Status command error', { error: msg });
+      await ctx.reply(`Error: ${msg}`).catch(() => {});
+    }
+  });
+
+  // Handle /approve command
+  _bot.command('approve', async (ctx) => {
+    try {
+      const result = await executeCeoTool('approve_action', { approval_id: 'all' }, config);
+      await ctx.reply(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('Approve command error', { error: msg });
+      await ctx.reply(`Error: ${msg}`).catch(() => {});
+    }
+  });
+
+  // Handle /reject command
+  _bot.command('reject', async (ctx) => {
+    try {
+      const args = ctx.match?.toString().trim() ?? '';
+      const spaceIdx = args.indexOf(' ');
+      const approvalId = spaceIdx > 0 ? args.slice(0, spaceIdx) : args;
+      const reason = spaceIdx > 0 ? args.slice(spaceIdx + 1).trim() : '';
+      if (!approvalId) {
+        await ctx.reply('Usage: /reject <id> <reason>');
+        return;
+      }
+      const result = await executeCeoTool('reject_action', { approval_id: approvalId, reason: reason || 'No reason given' }, config);
+      await ctx.reply(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('Reject command error', { error: msg });
+      await ctx.reply(`Error: ${msg}`).catch(() => {});
+    }
+  });
+
+  // Handle /cost command
+  _bot.command('cost', async (ctx) => {
+    try {
+      const result = await executeCeoTool('get_cost', {}, config);
+      await ctx.reply(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('Cost command error', { error: msg });
+      await ctx.reply(`Error: ${msg}`).catch(() => {});
+    }
+  });
+
+  // Handle /quit command
+  _bot.command('quit', async (ctx) => {
+    try {
+      await executeCeoTool('pause_cascade', {}, config);
+      await ctx.reply('Shutting down...');
+      _bot?.stop();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('Quit command error', { error: msg });
+      await ctx.reply(`Error: ${msg}`).catch(() => {});
+    }
   });
 
   return _bot;
@@ -143,24 +242,60 @@ async function processQueue(config: EchelonConfig): Promise<void> {
 
 /** Start the bot polling loop */
 export async function startBot(config: EchelonConfig): Promise<void> {
+  if (!config.telegram?.enabled) {
+    throw new Error('Telegram is not enabled in config. Set telegram.enabled: true');
+  }
+
   const bot = createTelegramBot(config);
   logger.info('Starting Telegram bot...');
 
   // Send online notification
   await sendTelegramMessage('Echelon CEO AI online. Ready for directives.');
 
-  // Start polling
+  // Subscribe to orchestrator events for real-time notifications
+  onOrchestratorCreated((orch) => {
+    orch.bus.onEchelon((event) => {
+      const message = formatEventForTelegram(event);
+      if (message !== null) {
+        sendTelegramMessage(message).catch((err) => {
+          logger.error('Failed to send event notification', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
+    });
+  });
+
+  // Start polling with error handling
   bot.start({
     onStart: () => {
       logger.info('Telegram bot started');
     },
+  }).catch((err) => {
+    logger.error('Bot start error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  });
+
+  // Handle unhandled errors
+  bot.catch((err) => {
+    logger.error('Bot unhandled error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
   });
 
   // Handle graceful shutdown
   const shutdown = async () => {
-    logger.info('Shutting down Telegram bot...');
-    await sendTelegramMessage('Echelon going offline.');
-    bot.stop();
+    try {
+      logger.info('Shutting down Telegram bot...');
+      await sendTelegramMessage('Echelon going offline.').catch(() => {});
+      bot.stop();
+    } catch (err) {
+      logger.error('Shutdown error', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   };
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);

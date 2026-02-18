@@ -37,6 +37,7 @@ export const LegacyEngineersConfigSchema = z.object({
 export const TelegramConfigSchema = z.object({
   botToken: z.string().min(1),
   chatId: z.string().min(1),
+  allowedUserIds: z.array(z.string()).optional(),
   enabled: z.boolean().default(true),
 }).optional();
 
@@ -237,7 +238,7 @@ export type EchelonEvent =
   | { type: 'action_executed'; action: Action; result: string }
   | { type: 'action_rejected'; approval: PendingApproval; reason: string }
   | { type: 'issue_created'; issue: TrackedIssue }
-  | { type: 'ralphy_progress'; label: string; line: string }
+  | { type: 'cheenoski_progress'; label: string; line: string }
   | { type: 'error'; role: AgentRole; error: string }
   | { type: 'cost_update'; role: AgentRole; costUsd: number; totalUsd: number }
   | { type: 'state_saved'; path: string }

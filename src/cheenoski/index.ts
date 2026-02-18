@@ -13,7 +13,7 @@ const execFileAsync = promisify(execFile);
 
 /**
  * CheenoskiRunner — public API for invoking the engineering layer.
- * Replaces the old ralphy.ts bash invocation.
+ * TypeScript engineering layer.
  */
 export class CheenoskiRunner {
   private scheduler: Scheduler | null = null;

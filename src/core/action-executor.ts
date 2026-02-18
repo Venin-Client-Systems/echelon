@@ -100,7 +100,7 @@ export class ActionExecutor {
           this.config,
           action.maxParallel,
           this.bus,
-          (line) => this.bus.emitEchelon({ type: 'ralphy_progress', label: action.label, line }),
+          (line) => this.bus.emitEchelon({ type: 'cheenoski_progress', label: action.label, line }),
         );
         this.cheenoskiKillHandles.push({ label: action.label, kill: handle.kill });
         return `Cheenoski invoked for label: ${action.label}`;
@@ -196,7 +196,7 @@ function describeAction(action: Action): string {
     case 'invoke_cheenoski':
       return `Run Cheenoski for label: ${action.label}`;
     case 'invoke_ralphy':
-      return `Run Ralphy for label: ${action.label}`;
+      return `Run Cheenoski for label: ${action.label}`;
     case 'update_plan':
       return `Update plan (${action.workstreams?.length ?? 0} workstreams)`;
     case 'request_info':

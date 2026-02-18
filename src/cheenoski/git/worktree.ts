@@ -21,13 +21,18 @@ export interface WorktreeInfo {
 
 /** Generate a PID-namespaced branch name for worktree isolation */
 export function worktreeBranchName(issueNumber: number, slug: string): string {
-  return `cheenoski-${process.pid}-${issueNumber}-${slug}`;
+  // Sanitize slug to prevent shell injection
+  const safeslug = slug.replace(/[^a-zA-Z0-9_-]/g, '-');
+  return `cheenoski-${process.pid}-${issueNumber}-${safeslug}`;
 }
 
 /** Generate worktree path in a temp-adjacent location */
 export function worktreePath(repoPath: string, branchName: string): string {
   const repoName = basename(repoPath) || 'repo';
-  return join(tmpdir(), 'cheenoski-worktrees', `${repoName}-${branchName}`);
+  // Sanitize both repoName and branchName to prevent path traversal
+  const safeRepoName = repoName.replace(/[^a-zA-Z0-9_-]/g, '-');
+  const safeBranchName = branchName.replace(/[^a-zA-Z0-9_-]/g, '-');
+  return join(tmpdir(), 'cheenoski-worktrees', `${safeRepoName}-${safeBranchName}`);
 }
 
 /**
@@ -131,17 +136,22 @@ export async function listWorktrees(repoPath: string): Promise<WorktreeInfo[]> {
       const path = worktreeLine.replace('worktree ', '');
       const branch = branchLine.replace('branch refs/heads/', '');
 
-      const match = branch.match(/^cheenoski-\d+-(\d+)-/);
+      // Validate branch name pattern before trusting it
+      const match = branch.match(/^cheenoski-(\d+)-(\d+)-/);
       if (match) {
-        result.push({
-          path,
-          branch,
-          issueNumber: parseInt(match[1], 10),
-        });
+        const pid = parseInt(match[1], 10);
+        const issueNum = parseInt(match[2], 10);
+        if (!isNaN(pid) && !isNaN(issueNum)) {
+          result.push({
+            path,
+            branch,
+            issueNumber: issueNum,
+          });
+        }
       }
     }
-  } catch {
-    logger.debug('Could not list worktrees');
+  } catch (err) {
+    logger.debug(`Could not list worktrees: ${err instanceof Error ? err.message : err}`);
   }
 
   return result;

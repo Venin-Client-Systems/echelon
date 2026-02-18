@@ -80,15 +80,25 @@ export function getActiveInstances(): InstanceLock[] {
 
   for (const file of readdirSync(INSTANCES_DIR)) {
     if (!file.endsWith('.lock')) continue;
-    const lock = readLock(join(INSTANCES_DIR, file));
-    if (!lock) continue;
+    const fullPath = join(INSTANCES_DIR, file);
+    const lock = readLock(fullPath);
+
+    if (!lock) {
+      // Corrupt lock file — clean up
+      try {
+        unlinkSync(fullPath);
+        logger.debug(`Removed corrupt lock file: ${file}`);
+      } catch { /* best effort */ }
+      continue;
+    }
 
     if (isAlive(lock.pid)) {
       locks.push(lock);
     } else {
       // Stale lock — clean up
       try {
-        unlinkSync(join(INSTANCES_DIR, file));
+        unlinkSync(fullPath);
+        logger.debug(`Removed stale lock for PID ${lock.pid}: ${file}`);
       } catch { /* best effort */ }
     }
   }
@@ -108,15 +118,21 @@ export function claimIssue(issueNumber: number): boolean {
   if (existsSync(claimPath)) {
     try {
       const data = JSON.parse(readFileSync(claimPath, 'utf-8'));
+      // Validate claim data structure
+      if (!data || typeof data.pid !== 'number') {
+        throw new Error('Invalid claim data');
+      }
       // If the claiming PID is still alive, the claim is valid
       if (isAlive(data.pid)) {
         logger.debug(`Issue #${issueNumber} already claimed by PID ${data.pid}`);
         return false;
       }
       // Stale claim — remove it
+      logger.debug(`Removing stale claim for issue #${issueNumber} (PID ${data.pid} dead)`);
       unlinkSync(claimPath);
-    } catch {
+    } catch (err) {
       // Corrupt claim file — remove it
+      logger.debug(`Removing corrupt claim file for issue #${issueNumber}: ${err instanceof Error ? err.message : err}`);
       try { unlinkSync(claimPath); } catch { /* ignore */ }
     }
   }

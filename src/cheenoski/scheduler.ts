@@ -55,6 +55,8 @@ export class Scheduler {
   private issueQueue: CheenoskiIssue[] = [];
   private activeEngines = new Map<number, EngineRunner>();
   private running = false;
+  private filling = false;
+  private nextSlotId = 0;
   private startTime = 0;
   private mergeMutex = new AsyncMutex();
   /** Track running slot promises so we can await them on shutdown */
@@ -136,8 +138,12 @@ export class Scheduler {
   kill(): void {
     this.running = false;
     for (const [slotId, engine] of this.activeEngines) {
-      engine.kill();
-      logger.info(`Killed engine for slot ${slotId}`);
+      try {
+        engine.kill();
+        logger.info(`Killed engine for slot ${slotId}`);
+      } catch (err) {
+        logger.warn(`Failed to kill engine for slot ${slotId}: ${err instanceof Error ? err.message : err}`);
+      }
     }
     this.activeEngines.clear();
   }
@@ -154,29 +160,43 @@ export class Scheduler {
 
   /** Fill available slots from the issue queue */
   private async fillSlots(): Promise<void> {
-    const maxParallel = this.config.engineers.maxParallel;
+    if (this.filling) return;
+    this.filling = true;
 
-    while (
-      this.issueQueue.length > 0 &&
-      this.getActiveSlotCount() < maxParallel
-    ) {
-      const issue = this.pickNextIssue();
-      if (!issue) break;
+    try {
+      const maxParallel = this.config.engineers.maxParallel;
 
-      const slot = await this.createSlot(issue);
-      if (slot) {
-        this.slots.push(slot);
-        this.bus.emitEchelon({ type: 'cheenoski_slot_fill', slot });
+      while (
+        this.issueQueue.length > 0 &&
+        this.getActiveSlotCount() < maxParallel
+      ) {
+        const issue = this.pickNextIssue();
+        if (!issue) break;
 
-        // Track the running slot promise
-        const slotPromise = this.runSlot(slot).catch((err) => {
-          logger.error(`Unhandled error in slot #${slot.issueNumber}`, {
-            error: err instanceof Error ? err.message : String(err),
+        const slot = await this.createSlot(issue);
+        if (slot) {
+          this.slots.push(slot);
+          this.bus.emitEchelon({ type: 'cheenoski_slot_fill', slot });
+
+          // Track the running slot promise
+          const slotPromise = this.runSlot(slot).catch((err) => {
+            logger.error(`Unhandled error in slot #${slot.issueNumber}`, {
+              error: err instanceof Error ? err.message : String(err),
+            });
+            // Mark slot as failed on uncaught error
+            slot.status = 'failed';
+            slot.error = err instanceof Error ? err.message : String(err);
           });
-        });
-        this.runningSlots.set(slot.id, slotPromise);
-        slotPromise.finally(() => this.runningSlots.delete(slot.id));
+          this.runningSlots.set(slot.id, slotPromise);
+          slotPromise.finally(() => {
+            this.runningSlots.delete(slot.id);
+            // Ensure engine is unregistered
+            this.unregisterEngine(slot.id);
+          });
+        }
       }
+    } finally {
+      this.filling = false;
     }
   }
 
@@ -233,7 +253,7 @@ export class Scheduler {
     const engineName = this.config.engineers.engine ?? 'claude';
 
     return {
-      id: this.slots.length,
+      id: this.nextSlotId++,
       issueNumber: issue.number,
       issueTitle: issue.title,
       issueBody: issue.body,
@@ -257,9 +277,14 @@ export class Scheduler {
   private async runSlot(slot: Slot): Promise<void> {
     const maxRetries = slot.maxRetries;
 
+    // Ensure issue is released even if runSlot throws
     try {
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        if (!this.running) return;
+        if (!this.running) {
+          // If scheduler is stopping, cleanup and exit
+          await this.cleanupSlotWorktree(slot);
+          return;
+        }
 
         slot.attempt = attempt;
         slot.status = 'running';
@@ -440,6 +465,7 @@ export class Scheduler {
           }
         } catch (err) {
           slot.error = err instanceof Error ? err.message : String(err);
+          logger.error(`Slot #${slot.issueNumber} attempt ${attempt} failed: ${slot.error}`);
           if (attempt < maxRetries) {
             await this.cleanupSlotWorktree(slot);
             continue;
@@ -447,14 +473,23 @@ export class Scheduler {
           slot.status = 'failed';
         } finally {
           slot.finishedAt = new Date().toISOString();
+          // Always cleanup worktree on attempt completion
           await this.cleanupSlotWorktree(slot);
+          // Always unregister engine
           this.unregisterEngine(slot.id);
         }
 
         break; // Exit retry loop on success or final failure
       }
+    } catch (outerErr) {
+      // Catch any errors from the retry loop itself
+      logger.error(`Fatal error in slot #${slot.issueNumber}: ${outerErr instanceof Error ? outerErr.message : outerErr}`);
+      slot.status = 'failed';
+      slot.error = outerErr instanceof Error ? outerErr.message : String(outerErr);
+      await this.cleanupSlotWorktree(slot);
+      this.unregisterEngine(slot.id);
     } finally {
-      // Release issue claim ONCE after the retry loop exits
+      // CRITICAL: Always release issue claim, even on crash
       releaseIssue(slot.issueNumber);
     }
 
@@ -466,8 +501,14 @@ export class Scheduler {
 
   private async cleanupSlotWorktree(slot: Slot): Promise<void> {
     if (slot.worktreePath) {
-      await removeWorktree(this.config.project.path, slot.worktreePath, slot.branchName, slot.issueNumber);
-      slot.worktreePath = null;
+      try {
+        await removeWorktree(this.config.project.path, slot.worktreePath, slot.branchName, slot.issueNumber);
+      } catch (err) {
+        logger.warn(`Failed to cleanup worktree for slot #${slot.issueNumber}: ${err instanceof Error ? err.message : err}`);
+      } finally {
+        // Always clear the path reference even if removal failed
+        slot.worktreePath = null;
+      }
     }
   }
 

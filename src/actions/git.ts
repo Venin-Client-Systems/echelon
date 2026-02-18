@@ -26,6 +26,11 @@ export async function createBranch(
     throw new Error(`Invalid branch name: "${branchName}"`);
   }
 
+  // Validate fromRef if provided to prevent injection
+  if (fromRef && !isValidBranchName(fromRef)) {
+    throw new Error(`Invalid fromRef: "${fromRef}"`);
+  }
+
   try {
     const args = ['branch', branchName];
     if (fromRef) args.push(fromRef);
@@ -41,20 +46,30 @@ export async function createBranch(
  * Get the current branch name.
  */
 export async function getCurrentBranch(repoPath: string): Promise<string> {
-  const { stdout } = await execFileAsync('git', ['branch', '--show-current'], {
-    cwd: repoPath,
-    encoding: 'utf-8',
-  });
-  return stdout.trim();
+  try {
+    const { stdout } = await execFileAsync('git', ['branch', '--show-current'], {
+      cwd: repoPath,
+      encoding: 'utf-8',
+    });
+    return stdout.trim();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to get current branch: ${msg}`);
+  }
 }
 
 /**
  * Check if working tree is clean.
  */
 export async function isClean(repoPath: string): Promise<boolean> {
-  const { stdout } = await execFileAsync('git', ['status', '--porcelain'], {
-    cwd: repoPath,
-    encoding: 'utf-8',
-  });
-  return stdout.trim().length === 0;
+  try {
+    const { stdout } = await execFileAsync('git', ['status', '--porcelain'], {
+      cwd: repoPath,
+      encoding: 'utf-8',
+    });
+    return stdout.trim().length === 0;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to check git status: ${msg}`);
+  }
 }

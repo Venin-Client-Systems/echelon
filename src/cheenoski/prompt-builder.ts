@@ -13,14 +13,17 @@ export function buildEngineerPrompt(
 ): string {
   const sections: string[] = [];
 
+  // Sanitize issue title to prevent prompt injection
+  const safeTitle = sanitizeForPrompt(issue.title);
+
   // Header
-  sections.push(`# Task: ${issue.title}`);
+  sections.push(`# Task: ${safeTitle}`);
   sections.push(`Issue #${issue.number} in ${config.project.repo}`);
   sections.push('');
 
-  // Issue body (the main spec)
+  // Issue body (the main spec) - preserve as-is but with size limit
   sections.push('## Specification');
-  sections.push(issue.body);
+  sections.push(limitPromptSize(issue.body, 50000)); // Cap at 50k chars
   sections.push('');
 
   // Scope rules based on domain
@@ -55,11 +58,35 @@ export function buildEngineerPrompt(
   // Lessons from previous runs
   if (lessonsContext) {
     sections.push('## Lessons from Previous Runs');
-    sections.push(lessonsContext);
+    sections.push(limitPromptSize(lessonsContext, 10000)); // Cap lessons at 10k chars
     sections.push('');
   }
 
-  return sections.join('\n');
+  const fullPrompt = sections.join('\n');
+
+  // Final safety check: cap total prompt size
+  if (fullPrompt.length > 100000) {
+    return fullPrompt.slice(0, 100000) + '\n\n[Prompt truncated due to size]';
+  }
+
+  return fullPrompt;
+}
+
+/** Sanitize text to prevent prompt injection attacks */
+function sanitizeForPrompt(text: string): string {
+  // Remove common prompt injection patterns while preserving readability
+  return text
+    .replace(/```[\s\S]*?```/g, '[code block]') // Remove code blocks
+    .replace(/<\/?[^>]+(>|$)/g, '') // Remove HTML tags
+    .slice(0, 500); // Reasonable title length
+}
+
+/** Limit text size while preserving readability */
+function limitPromptSize(text: string, maxChars: number): string {
+  if (text.length <= maxChars) {
+    return text;
+  }
+  return text.slice(0, maxChars) + '\n\n[Content truncated due to size]';
 }
 
 function buildScopeRules(domain: Domain | 'unknown', config: EchelonConfig): string {

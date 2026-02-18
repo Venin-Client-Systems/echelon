@@ -60,7 +60,7 @@ export interface EngineRunOptions {
     cwd: string;
     timeoutMs: number;
     issueNumber: number;
-    /** Extra context from RALPHY_LESSONS.md etc. */
+    /** Extra context from CHEENOSKI_LESSONS.md etc. */
     lessonsContext?: string;
 }
 

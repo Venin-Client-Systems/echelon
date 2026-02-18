@@ -17,7 +17,9 @@ function escapeAppleScript(str: string): string {
 /** Escape a string for safe use in PowerShell */
 function escapePowerShell(str: string): string {
     return str
-        .replace(/'/g, "''")
+        .replace(/`/g, '``')   // Backtick (PS escape char) must be escaped first
+        .replace(/\$/g, '`$')  // Dollar sign — prevents $(cmd) execution
+        .replace(/'/g, "''")   // Single quotes
         .replace(/\n/g, ' ')
         .replace(/\r/g, '');
 }
