@@ -297,6 +297,7 @@ export interface EchelonState {
   sessionId: string;
   projectRepo: string;
   status: 'running' | 'paused' | 'completed' | 'failed';
+  cascadePhase: 'idle' | 'strategy' | 'design' | 'execution' | 'complete';
   agents: Record<AgentRole, AgentState>;
   messages: LayerMessage[];
   plan: string | null;

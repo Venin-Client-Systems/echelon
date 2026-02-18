@@ -153,6 +153,8 @@ export class Orchestrator {
 
     try {
       // Phase 1: CEO → 2IC (strategy)
+      this.state.cascadePhase = 'strategy';
+      saveState(this.state);
       const strategyMsg = await this.runLayer('2ic', 'ceo', directive);
       if (this.shuttingDown) {
         this.state.status = 'paused';
@@ -184,6 +186,8 @@ export class Orchestrator {
       }
 
       // Phase 2: 2IC → Eng Lead (technical design)
+      this.state.cascadePhase = 'design';
+      saveState(this.state);
       const designInput = await this.buildDownwardPrompt(strategyMsg);
       let designMsg = await this.runLayer('eng-lead', '2ic', designInput);
       if (this.shuttingDown) {
@@ -226,6 +230,8 @@ export class Orchestrator {
       }
 
       // Phase 3: Eng Lead → Team Lead (issue creation + execution)
+      this.state.cascadePhase = 'execution';
+      saveState(this.state);
       const execInput = await this.buildDownwardPrompt(designMsg, 'team-lead');
       let execMsg = await this.runLayer('team-lead', 'eng-lead', execInput);
       if (this.shuttingDown) {
@@ -268,6 +274,7 @@ export class Orchestrator {
       }
 
       this.state.status = 'completed';
+      this.state.cascadePhase = 'complete';
       saveState(this.state);
       this.bus.emitEchelon({ type: 'cascade_complete', directive });
 
@@ -340,6 +347,7 @@ export class Orchestrator {
             timeoutMs: layerConfig.timeoutMs,
             cwd: this.config.project.path,
             maxBudgetUsd: layerConfig.maxBudgetUsd - agentState.totalCost,
+            yolo: false, // Management layers NEVER get yolo mode
           })
         : await spawnAgent(input, {
             model: layerConfig.model,
@@ -348,13 +356,19 @@ export class Orchestrator {
             maxTurns,
             timeoutMs: layerConfig.timeoutMs,
             cwd: this.config.project.path,
+            yolo: false, // Management layers NEVER get yolo mode
           });
 
       // Update agent state
       agentState.sessionId = response.sessionId;
-      agentState.totalCost += response.costUsd;
       agentState.turnsCompleted++;
-      this.state.totalCost += response.costUsd;
+
+      // Only track costs when billing is 'api' (real costs)
+      // When billing is 'max', costs are estimates and should not be tracked
+      if (this.config.billing !== 'max') {
+        agentState.totalCost += response.costUsd;
+        this.state.totalCost += response.costUsd;
+      }
 
       this.bus.emitEchelon({
         type: 'cost_update',
@@ -508,13 +522,29 @@ export class Orchestrator {
     round = 0,
   ): Promise<LayerMessage | null> {
     const MAX_LOOPBACK_ROUNDS = 2;
-    if (round >= MAX_LOOPBACK_ROUNDS) return msg;
 
     // Collect request_info actions targeting upstream layers
     const infoRequests = msg.actions.filter(
       (a): a is Action & { action: 'request_info' } =>
         a.action === 'request_info',
     );
+
+    // Check if we've hit max rounds with unresolved questions
+    if (round >= MAX_LOOPBACK_ROUNDS) {
+      if (infoRequests.length > 0) {
+        const questions = infoRequests.map(r => r.question).join('; ');
+        const errorMsg = `${LAYER_LABELS[requestingRole]} still has unresolved questions after ${MAX_LOOPBACK_ROUNDS} loopback rounds: ${questions}`;
+        this.logger.error(errorMsg);
+        this.bus.emitEchelon({
+          type: 'error',
+          role: requestingRole,
+          error: errorMsg,
+        });
+        // Return null to fail the cascade — we can't proceed with incomplete information
+        return null;
+      }
+      return msg;
+    }
 
     if (infoRequests.length === 0) return msg;
 
@@ -591,11 +621,22 @@ export class Orchestrator {
     const allowed = ROLE_ALLOWED_ACTIONS[role];
     if (!allowed) return actions;
 
-    return actions.filter((action) => {
+    const filtered = actions.filter((action) => {
       if (allowed.has(action.action)) return true;
-      this.logger.warn(`Dropping "${action.action}" from ${LAYER_LABELS[role]} — not in allowed actions for this role`);
+
+      // Emit error event for dropped action so it's visible in the system
+      const errorMsg = `Action "${action.action}" not allowed for ${LAYER_LABELS[role]} role. Allowed actions: ${[...allowed].join(', ')}`;
+      this.logger.error(errorMsg);
+      this.bus.emitEchelon({
+        type: 'error',
+        role,
+        error: errorMsg,
+      });
+
       return false;
     });
+
+    return filtered;
   }
 
   /** Get the downstream role for a given layer */

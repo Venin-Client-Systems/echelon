@@ -40,6 +40,7 @@ export function createState(config: EchelonConfig, directive: string): EchelonSt
     sessionId,
     projectRepo: config.project.repo,
     status: 'running',
+    cascadePhase: 'idle',
     agents,
     messages: [],
     plan: null,
