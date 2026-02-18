@@ -34,17 +34,40 @@ export class CheenoskiRunner {
       ? { ...this.config, engineers: { ...this.config.engineers, maxParallel } }
       : this.config;
 
-    // Check for conflicting instances
+    // Acquire coordination lock FIRST to prevent TOCTOU race
+    acquireLock(label);
+
+    // Small delay to ensure our lock file is visible to other processes
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // Then check for conflicting instances
     const conflict = hasConflictingInstance(label);
     if (conflict) {
-      throw new Error(
-        `Another Cheenoski instance (PID ${conflict.pid}) is already processing "${label}". ` +
-        `Started at ${conflict.startedAt}.`
-      );
-    }
+      // Use PID as tiebreaker (lower PID wins)
+      if (conflict.pid < process.pid) {
+        // We lose the race, clean up and abort
+        releaseLock();
+        throw new Error(
+          `Another Cheenoski instance (PID ${conflict.pid}) is already processing "${label}". ` +
+          `Started at ${conflict.startedAt}.`
+        );
+      } else {
+        // We win the race - other process should abort soon
+        // Wait for them to clean up
+        await new Promise(resolve => setTimeout(resolve, 100));
 
-    // Acquire coordination lock
-    acquireLock(label);
+        // Double-check they're gone
+        const stillConflicting = hasConflictingInstance(label);
+        if (stillConflicting && stillConflicting.pid < process.pid) {
+          // Other process didn't abort, we should
+          releaseLock();
+          throw new Error(
+            `Another Cheenoski instance (PID ${stillConflicting.pid}) is already processing "${label}". ` +
+            `Started at ${stillConflicting.startedAt}.`
+          );
+        }
+      }
+    }
 
     // Register signal handlers for clean shutdown (#12)
     this.registerSignalHandlers();
