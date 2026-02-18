@@ -63,20 +63,20 @@ export class Orchestrator {
     this.bus.onEchelon((event) => {
       switch (event.type) {
         case 'action_executed':
-          this.this.logger.info(`Action executed: ${event.action.action}`, { result: event.result.slice(0, 100) });
+          this.logger.info(`Action executed: ${event.action.action}`, { result: event.result.slice(0, 100) });
           this.transcript.appendEvent(`Action: ${event.action.action} — ${event.result}`);
           break;
         case 'action_pending':
-          this.this.logger.info(`Awaiting approval: ${event.approval.description}`);
+          this.logger.info(`Awaiting approval: ${event.approval.description}`);
           break;
         case 'issue_created':
-          this.this.logger.info(`Issue #${event.issue.number}: ${event.issue.title}`);
+          this.logger.info(`Issue #${event.issue.number}: ${event.issue.title}`);
           break;
         case 'cheenoski_progress':
           this.logger.debug(`[Cheenoski:${event.label}] ${event.line}`);
           break;
         case 'error':
-          this.this.logger.error(`[${event.role}] ${event.error}`);
+          this.logger.error(`[${event.role}] ${event.error}`);
           break;
       }
     });
