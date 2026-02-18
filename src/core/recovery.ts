@@ -36,6 +36,7 @@ export async function withRetry<T>(
 ): Promise<T> {
   const config = { ...DEFAULT_RETRY, ...opts };
 
+  // maxRetries = total number of attempts (not additional retries)
   // Attempt 1..maxRetries (inclusive), so maxRetries total attempts
   for (let attempt = 1; attempt <= config.maxRetries; attempt++) {
     try {
@@ -44,12 +45,12 @@ export async function withRetry<T>(
       const msg = err instanceof Error ? err.message : String(err);
 
       if (attempt >= config.maxRetries) {
-        logger.error(`${label}: all ${config.maxRetries} retries exhausted`, { error: msg });
+        logger.error(`${label}: all ${config.maxRetries} attempts exhausted`, { error: msg });
         throw err;
       }
 
       const delay = backoffDelay(attempt - 1, config);
-      logger.warn(`${label}: attempt ${attempt}/${config.maxRetries + 1} failed, retrying in ${(delay / 1000).toFixed(1)}s`, {
+      logger.warn(`${label}: attempt ${attempt}/${config.maxRetries} failed, retrying in ${(delay / 1000).toFixed(1)}s`, {
         error: msg,
         attempt,
         maxRetries: config.maxRetries,

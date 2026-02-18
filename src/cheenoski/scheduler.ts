@@ -1,6 +1,6 @@
 import type { MessageBus } from '../core/message-bus.js';
 import type { EchelonConfig } from '../lib/types.js';
-import type { CheenoskiIssue, Slot, SchedulerState, EngineRunner } from './types.js';
+import type { CheenoskiIssue, Slot, SchedulerState, EngineRunner, Domain } from './types.js';
 import { logger, shouldLogSampledEvent, type Logger } from '../lib/logger.js';
 import { detectDomain, canRunParallel, slugify } from './domain.js';
 import { createWorktree, removeWorktree } from './git/worktree.js';
@@ -176,10 +176,11 @@ export class Scheduler {
         this.issueQueue.length > 0 &&
         this.getActiveSlotCount() < maxParallel
       ) {
-        const issue = this.pickNextIssue();
-        if (!issue) break;
+        const next = this.pickNextIssue();
+        if (!next) break;
 
-        const slot = await this.createSlot(issue);
+        const { issue, domain } = next;
+        const slot = await this.createSlot(issue, domain);
         if (slot) {
           this.slots.push(slot);
           this.bus.emitEchelon({ type: 'cheenoski_slot_fill', slot });
@@ -212,7 +213,7 @@ export class Scheduler {
   }
 
   /** Pick the next issue that's compatible with running slots */
-  private pickNextIssue(): CheenoskiIssue | null {
+  private pickNextIssue(): { issue: CheenoskiIssue; domain: Domain | 'unknown' } | null {
     const runningDomains = this.slots
       .filter(s => s.status === 'running')
       .map(s => s.domain);
@@ -225,21 +226,22 @@ export class Scheduler {
       const compatible = runningDomains.every(rd => canRunParallel(rd, domain));
       if (compatible || runningDomains.length === 0) {
         this.issueQueue.splice(i, 1);
-        return issue;
+        return { issue, domain };
       }
     }
 
     // If no compatible issue found but queue not empty, take the first one
     // (it'll just wait for the conflicting slot to finish)
     if (this.issueQueue.length > 0 && this.getActiveSlotCount() === 0) {
-      return this.issueQueue.shift()!;
+      const issue = this.issueQueue.shift()!;
+      return { issue, domain: detectDomain(issue) };
     }
 
     return null;
   }
 
   /** Create a slot for an issue (worktree, branch, etc.) */
-  private async createSlot(issue: CheenoskiIssue): Promise<Slot | null> {
+  private async createSlot(issue: CheenoskiIssue, domain: Domain | 'unknown'): Promise<Slot | null> {
     const issueLogger = this.logger.child({ issueNumber: issue.number });
 
     // Skip issues already in progress
@@ -262,7 +264,6 @@ export class Scheduler {
       return null;
     }
 
-    const domain = detectDomain(issue);
     const engineName = this.config.engineers.engine ?? 'claude';
 
     return {
@@ -289,6 +290,8 @@ export class Scheduler {
   /** Run an engine in a slot's worktree */
   private async runSlot(slot: Slot): Promise<void> {
     const maxRetries = slot.maxRetries;
+    // maxRetries = total number of attempts (0-indexed loop: 0..maxRetries inclusive)
+    const totalAttempts = maxRetries + 1;
     // Create slot-specific logger with full context
     const slotLogger = this.logger.child({
       slot: slot.id,
@@ -446,7 +449,7 @@ export class Scheduler {
               });
 
               if (attempt < maxRetries) {
-                slotLogger.warn(`Merge failed, retrying (attempt ${attempt + 1}/${maxRetries})`);
+                slotLogger.warn(`Merge failed, retrying (attempt ${attempt + 1}/${totalAttempts})`);
                 await this.cleanupSlotWorktree(slot);
                 continue;
               }
@@ -485,7 +488,7 @@ export class Scheduler {
             }
             slot.status = 'failed';
             await commentOnIssue(this.config.project.repo, slot.issueNumber,
-              `Cheenoski failed after ${maxRetries + 1} attempts. Error: ${slot.error.slice(0, 200)}`);
+              `Cheenoski failed after ${totalAttempts} attempts. Error: ${slot.error.slice(0, 200)}`);
           }
         } catch (err) {
           slot.error = err instanceof Error ? err.message : String(err);

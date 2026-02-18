@@ -8,7 +8,7 @@ const activeRunners = new Map<string, { runner: CheenoskiRunner; runPromise: Pro
 
 /**
  * Invoke Cheenoski for a label.
- * Non-blocking: starts the runner and returns a kill handle.
+ * Non-blocking: starts the runner and returns a kill handle + completion callback.
  */
 export function invokeCheenoski(
   label: string,
@@ -16,7 +16,7 @@ export function invokeCheenoski(
   maxParallel: number | undefined,
   bus: MessageBus,
   onProgress?: (line: string) => void,
-): { kill: () => void } {
+): { kill: () => void; onComplete: (callback: () => void) => void } {
   // If a runner already exists for this label, prevent concurrent invocation
   const existing = activeRunners.get(label);
   if (existing) {
@@ -25,6 +25,9 @@ export function invokeCheenoski(
       kill: () => {
         existing.runner.kill();
         logger.info(`Killed existing runner for ${label}`);
+      },
+      onComplete: (callback: () => void) => {
+        existing.runPromise.finally(callback);
       },
     };
   }
@@ -65,6 +68,9 @@ export function invokeCheenoski(
         activeRunners.delete(label);
       }
       logger.info(`Killed Cheenoski runner for ${label}`);
+    },
+    onComplete: (callback: () => void) => {
+      runPromise.finally(callback);
     },
   };
 }

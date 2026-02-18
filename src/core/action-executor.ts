@@ -151,7 +151,17 @@ export class ActionExecutor {
           this.bus,
           (line) => this.bus.emitEchelon({ type: 'cheenoski_progress', label: action.label, line }),
         );
-        this.cheenoskiKillHandles.push({ label: action.label, kill: handle.kill });
+        const killHandle = { label: action.label, kill: handle.kill };
+        this.cheenoskiKillHandles.push(killHandle);
+
+        // Remove handle when Cheenoski completes to prevent memory leak
+        handle.onComplete(() => {
+          const idx = this.cheenoskiKillHandles.indexOf(killHandle);
+          if (idx !== -1) {
+            this.cheenoskiKillHandles.splice(idx, 1);
+          }
+        });
+
         return `Cheenoski invoked for label: ${action.label}`;
       }
 
