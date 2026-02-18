@@ -49,7 +49,7 @@ async function runClaude(args: string[], timeoutMs: number, cwd?: string): Promi
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     const errChunks: Buffer[] = [];
-    let killed = false;
+    let settled = false; // Guard against double resolve/reject
 
     // Unset CLAUDECODE to prevent nested Claude Code sessions from interfering
     const env = { ...process.env };
@@ -66,7 +66,8 @@ async function runClaude(args: string[], timeoutMs: number, cwd?: string): Promi
 
     let killTimer: ReturnType<typeof setTimeout> | null = null;
     const timer = setTimeout(() => {
-      killed = true;
+      if (settled) return;
+      settled = true;
       proc.kill('SIGTERM');
       // Follow up with SIGKILL if SIGTERM doesn't work
       killTimer = setTimeout(() => {
@@ -78,7 +79,8 @@ async function runClaude(args: string[], timeoutMs: number, cwd?: string): Promi
     proc.on('close', (code) => {
       clearTimeout(timer);
       if (killTimer) clearTimeout(killTimer);
-      if (killed) return; // already rejected by timeout
+      if (settled) return; // already rejected by timeout or error
+      settled = true;
       const stdout = Buffer.concat(chunks).toString('utf-8');
       const stderr = Buffer.concat(errChunks).toString('utf-8');
 
@@ -92,6 +94,9 @@ async function runClaude(args: string[], timeoutMs: number, cwd?: string): Promi
 
     proc.on('error', (err) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
+      if (settled) return;
+      settled = true;
       reject(new Error(`Failed to spawn claude: ${err.message}`));
     });
   });

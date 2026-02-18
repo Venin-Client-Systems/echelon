@@ -22,20 +22,30 @@ vi.mock('../state.js', async () => {
 });
 
 vi.mock('../../lib/logger.js', () => {
-  const createMockLogger = () => ({
+  const mockLogger: any = {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
     errorWithType: vi.fn(),
-    child: vi.fn(function(this: any) { return createMockLogger(); }),
-  });
+    setLevel: vi.fn(),
+    setQuiet: vi.fn(),
+    child: vi.fn(),
+  };
+  // child() returns the SAME mock instance so all calls are captured
+  mockLogger.child.mockReturnValue(mockLogger);
 
   return {
-    logger: createMockLogger(),
+    logger: mockLogger,
     generateCorrelationId: vi.fn(() => 'mock-correlation-id'),
   };
 });
+
+vi.mock('../../lib/github-client.js', () => ({
+  githubClient: {
+    exec: vi.fn().mockResolvedValue({ stdout: '[]', stderr: '' }),
+  },
+}));
 
 vi.mock('../../lib/transcript.js', () => ({
   TranscriptWriter: class MockTranscriptWriter {

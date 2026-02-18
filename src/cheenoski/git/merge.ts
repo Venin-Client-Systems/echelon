@@ -21,37 +21,37 @@ export interface MergeResult {
  * Merge a feature branch back into base branch.
  * Verifies ancestor relationship before merging.
  * Restores original branch after merging.
+ *
+ * @param repoPath - Path to the main repository
+ * @param featureBranch - Name of the feature branch to merge
+ * @param baseBranch - Name of the base branch to merge into
+ * @param issueNumber - Issue number for commit message
+ * @param worktreePath - Path to the worktree (used for rebase; falls back to repoPath)
  */
 export async function mergeBranch(
   repoPath: string,
   featureBranch: string,
   baseBranch: string,
   issueNumber: number,
+  worktreePath?: string,
 ): Promise<MergeResult> {
   // 1. Ensure the feature branch is a descendant of base branch.
   //    If base has advanced (e.g. another parallel merge landed), rebase
   //    the feature branch onto the current base so the merge is clean.
+  //    IMPORTANT: Rebase in the worktree (where the feature branch is checked out),
+  //    NOT in the main repo — that would corrupt the main repo's working tree.
   try {
     await git(['merge-base', '--is-ancestor', baseBranch, featureBranch], repoPath);
   } catch {
     logger.info(`${featureBranch} diverged from ${baseBranch} — rebasing before merge`);
 
-    // First checkout the feature branch before rebasing
+    // Rebase in the worktree where the feature branch is checked out
+    const rebaseCwd = worktreePath ?? repoPath;
     try {
-      await git(['checkout', featureBranch], repoPath);
-    } catch (checkoutErr) {
-      const coMsg = checkoutErr instanceof Error ? checkoutErr.message : String(checkoutErr);
-      return {
-        success: false,
-        error: `Failed to checkout ${featureBranch}: ${coMsg}`,
-      };
-    }
-
-    try {
-      await git(['rebase', baseBranch], repoPath);
+      await git(['rebase', baseBranch], rebaseCwd);
     } catch (rebaseErr) {
       // Rebase conflict — abort and report failure
-      try { await git(['rebase', '--abort'], repoPath); } catch { /* best effort */ }
+      try { await git(['rebase', '--abort'], rebaseCwd); } catch { /* best effort */ }
       const rbMsg = rebaseErr instanceof Error ? rebaseErr.message : String(rebaseErr);
       return {
         success: false,
@@ -69,15 +69,11 @@ export async function mergeBranch(
 
   // 3. Stash any uncommitted changes in the main worktree
   let stashed = false;
-  let stashRef = '';
+  const stashMessage = `cheenoski-pre-merge-${issueNumber}-${Date.now()}`;
   const status = await git(['status', '--porcelain'], repoPath);
   if (status.length > 0) {
     try {
-      await git(['stash', 'push', '-m', `cheenoski-pre-merge-${issueNumber}`], repoPath);
-      // Get the stash ref for safer restoration
-      const stashList = await git(['stash', 'list'], repoPath);
-      const stashMatch = stashList.match(/^(stash@\{\d+\})/);
-      stashRef = stashMatch ? stashMatch[1] : 'stash@{0}';
+      await git(['stash', 'push', '-m', stashMessage], repoPath);
       stashed = true;
       logger.debug('Stashed uncommitted changes before merge');
     } catch (stashErr) {
@@ -117,15 +113,15 @@ export async function mergeBranch(
 
     // Check for merge conflicts
     if (msg.includes('CONFLICT') || msg.includes('Automatic merge failed')) {
-      // Abort the merge
-      try { await git(['merge', '--abort'], repoPath); } catch { /* best effort */ }
-
-      // List conflicting files
+      // List conflicting files BEFORE aborting (diff-filter=U is empty after abort)
       let conflictFiles: string[] = [];
       try {
         const conflictOutput = await git(['diff', '--name-only', '--diff-filter=U'], repoPath);
         conflictFiles = conflictOutput.split('\n').filter(Boolean);
       } catch { /* ignore */ }
+
+      // Now abort the merge
+      try { await git(['merge', '--abort'], repoPath); } catch { /* best effort */ }
 
       return {
         success: false,
@@ -145,13 +141,24 @@ export async function mergeBranch(
       }
     }
 
-    // Restore stash if we stashed
+    // Restore stash by matching the unique message (safer than index-based ref)
     if (stashed) {
       try {
-        // Use the stash ref if we have it, otherwise fall back to stash@{0}
-        const ref = stashRef || 'stash@{0}';
-        await git(['stash', 'pop', ref], repoPath);
-        logger.debug('Restored stashed changes after merge');
+        const stashList = await git(['stash', 'list'], repoPath);
+        const lines = stashList.split('\n');
+        let foundRef = '';
+        for (const line of lines) {
+          if (line.includes(stashMessage)) {
+            const match = line.match(/^(stash@\{\d+\})/);
+            if (match) { foundRef = match[1]; break; }
+          }
+        }
+        if (foundRef) {
+          await git(['stash', 'pop', foundRef], repoPath);
+          logger.debug('Restored stashed changes after merge');
+        } else {
+          logger.warn(`Could not find stash with message "${stashMessage}" — check git stash list`);
+        }
       } catch (popErr) {
         logger.warn(`Failed to restore stash after merge: ${popErr instanceof Error ? popErr.message : popErr} — check git stash list`);
       }
@@ -186,9 +193,9 @@ export async function hasChanges(worktreePath: string, baseBranch: string): Prom
   const status = await git(['status', '--porcelain'], worktreePath);
   if (status.length > 0) return true;
 
-  // Check if HEAD differs from base branch
+  // Check if HEAD has commits beyond the base branch (three-dot diff)
   try {
-    const diffStat = await git(['diff', '--stat', baseBranch], worktreePath);
+    const diffStat = await git(['diff', '--stat', `${baseBranch}...HEAD`], worktreePath);
     return diffStat.length > 0;
   } catch {
     return false;

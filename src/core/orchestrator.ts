@@ -13,6 +13,7 @@ import { parseActions, stripActionBlocks } from './action-parser.js';
 import { ActionExecutor } from './action-executor.js';
 import { createState, saveState, loadState, updateAgentStatus } from './state.js';
 import { checkLayerBudget, checkTotalBudget, budgetSummary } from './recovery.js';
+import { githubClient } from '../lib/github-client.js';
 
 /**
  * Options for creating an Orchestrator instance.
@@ -153,8 +154,15 @@ export class Orchestrator {
     try {
       // Phase 1: CEO → 2IC (strategy)
       const strategyMsg = await this.runLayer('2ic', 'ceo', directive);
-      if (this.shuttingDown || !strategyMsg) {
+      if (this.shuttingDown) {
         this.state.status = 'paused';
+        saveState(this.state);
+        return;
+      }
+      if (!strategyMsg) {
+        // runLayer returned null without shutdown — budget exceeded or layer error
+        // Status already set to 'failed' by runLayer's catch block or budget check
+        if (this.state.status === 'running') this.state.status = 'failed';
         saveState(this.state);
         return;
       }
@@ -176,10 +184,15 @@ export class Orchestrator {
       }
 
       // Phase 2: 2IC → Eng Lead (technical design)
-      const designInput = this.buildDownwardPrompt(strategyMsg);
+      const designInput = await this.buildDownwardPrompt(strategyMsg);
       let designMsg = await this.runLayer('eng-lead', '2ic', designInput);
-      if (this.shuttingDown || !designMsg) {
+      if (this.shuttingDown) {
         this.state.status = 'paused';
+        saveState(this.state);
+        return;
+      }
+      if (!designMsg) {
+        if (this.state.status === 'running') this.state.status = 'failed';
         saveState(this.state);
         return;
       }
@@ -193,8 +206,13 @@ export class Orchestrator {
 
       // Loopback: if Eng Lead asked 2IC questions, answer them
       designMsg = await this.resolveInfoRequests(designMsg, 'eng-lead');
-      if (this.shuttingDown || !designMsg) {
+      if (this.shuttingDown) {
         this.state.status = 'paused';
+        saveState(this.state);
+        return;
+      }
+      if (!designMsg) {
+        if (this.state.status === 'running') this.state.status = 'failed';
         saveState(this.state);
         return;
       }
@@ -208,10 +226,15 @@ export class Orchestrator {
       }
 
       // Phase 3: Eng Lead → Team Lead (issue creation + execution)
-      const execInput = this.buildDownwardPrompt(designMsg, 'team-lead');
+      const execInput = await this.buildDownwardPrompt(designMsg, 'team-lead');
       let execMsg = await this.runLayer('team-lead', 'eng-lead', execInput);
-      if (this.shuttingDown || !execMsg) {
+      if (this.shuttingDown) {
         this.state.status = 'paused';
+        saveState(this.state);
+        return;
+      }
+      if (!execMsg) {
+        if (this.state.status === 'running') this.state.status = 'failed';
         saveState(this.state);
         return;
       }
@@ -225,8 +248,13 @@ export class Orchestrator {
 
       // Loopback: if Team Lead asked Eng Lead questions, answer them
       execMsg = await this.resolveInfoRequests(execMsg, 'team-lead');
-      if (this.shuttingDown || !execMsg) {
+      if (this.shuttingDown) {
         this.state.status = 'paused';
+        saveState(this.state);
+        return;
+      }
+      if (!execMsg) {
+        if (this.state.status === 'running') this.state.status = 'failed';
         saveState(this.state);
         return;
       }
@@ -302,13 +330,16 @@ export class Orchestrator {
       // - Error classification (rate limit, timeout, crash, quota)
       // - Exponential backoff with jitter
       // - Circuit breaker (opens after 5 consecutive failures)
+      // CRITICAL: Management layers must NEVER get --dangerously-skip-permissions.
+      // Only Cheenoski engineers (spawned by the scheduler) should have yolo access.
+      // Giving yolo to 2IC/Eng Lead/Team Lead lets them write code directly,
+      // bypassing the entire hierarchical delegation model.
       const response = agentState.sessionId
         ? await resumeAgent(agentState.sessionId, input, {
             maxTurns,
             timeoutMs: layerConfig.timeoutMs,
             cwd: this.config.project.path,
             maxBudgetUsd: layerConfig.maxBudgetUsd - agentState.totalCost,
-            yolo: this.yolo,
           })
         : await spawnAgent(input, {
             model: layerConfig.model,
@@ -317,7 +348,6 @@ export class Orchestrator {
             maxTurns,
             timeoutMs: layerConfig.timeoutMs,
             cwd: this.config.project.path,
-            yolo: this.yolo,
           });
 
       // Update agent state
@@ -400,7 +430,7 @@ export class Orchestrator {
   }
 
   /** Build prompt for downstream layer using upstream response */
-  private buildDownwardPrompt(upstreamMsg: LayerMessage, targetRole?: LayerId): string {
+  private async buildDownwardPrompt(upstreamMsg: LayerMessage, targetRole?: LayerId): Promise<string> {
     const narrative = stripActionBlocks(upstreamMsg.content);
     const fromLabel = LAYER_LABELS[upstreamMsg.from];
 
@@ -430,8 +460,29 @@ export class Orchestrator {
       }
     }
 
-    // Specific instructions for the Team Lead
+    // For Team Lead: inject existing open issues to prevent duplicates
     if (targetRole === 'team-lead') {
+      try {
+        const { stdout } = await githubClient.exec([
+          'issue', 'list',
+          '--repo', this.config.project.repo,
+          '--state', 'open',
+          '--limit', '100',
+          '--json', 'number,title,labels',
+        ]);
+        const existingIssues = JSON.parse(stdout) as Array<{ number: number; title: string; labels: Array<{ name: string }> }>;
+        if (existingIssues.length > 0) {
+          parts.push('', '## Existing Open Issues (DO NOT create duplicates)');
+          for (const issue of existingIssues) {
+            const labels = issue.labels.map(l => l.name).join(', ');
+            parts.push(`- #${issue.number}: ${issue.title} [${labels}]`);
+          }
+          parts.push('', 'Only create issues for tasks NOT already covered above.');
+        }
+      } catch {
+        // Non-fatal — proceed without dedup context
+      }
+
       parts.push(
         '',
         'INSTRUCTION: Convert the above task specifications into a create_issues action block.',
@@ -644,8 +695,9 @@ export class Orchestrator {
     process.removeListener('SIGTERM', this.boundShutdown);
     this.signalHandlersInstalled = false;
 
-    // Exit the process — without this, Node stays alive after SIGTERM/SIGINT
-    process.exit(0);
+    // NOTE: We do NOT call process.exit() here — that prevents `finally` blocks
+    // and async cleanup from completing. The caller (index.ts) is responsible
+    // for calling process.exit() after awaiting the cascade promise.
   }
 
   /**

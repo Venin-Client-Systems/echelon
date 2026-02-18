@@ -386,6 +386,7 @@ export class Scheduler {
                 slot.branchName,
                 this.config.project.baseBranch,
                 slot.issueNumber,
+                slot.worktreePath ?? undefined,
               );
             } finally {
               this.mergeMutex.release();

@@ -33,8 +33,29 @@ async function ensureLabels(labels: string[], repo: string): Promise<void> {
 }
 
 /**
+ * Fetch titles of all open issues in a repo for dedup checks.
+ */
+async function fetchOpenIssueTitles(repo: string): Promise<Set<string>> {
+  try {
+    const { stdout } = await githubClient.exec([
+      'issue', 'list',
+      '--repo', repo,
+      '--state', 'open',
+      '--limit', '200',
+      '--json', 'title',
+    ]);
+    const issues = JSON.parse(stdout) as Array<{ title: string }>;
+    return new Set(issues.map(i => i.title.toLowerCase().trim()));
+  } catch {
+    // Non-fatal — proceed without dedup
+    return new Set();
+  }
+}
+
+/**
  * Create GitHub issues via the `gh` CLI.
  * Returns an array of successfully created issues with their numbers.
+ * Skips issues with titles matching existing open issues (dedup).
  * Continues creating remaining issues even if one fails.
  */
 export async function createIssues(
@@ -44,6 +65,9 @@ export async function createIssues(
   if (!isValidRepo(repo)) {
     throw new Error(`Invalid repo format: "${repo}". Expected owner/repo`);
   }
+
+  // Fetch existing open issue titles for dedup
+  const existingTitles = await fetchOpenIssueTitles(repo);
 
   // Collect all unique labels and ensure they exist
   const allLabels = new Set<string>();
@@ -71,6 +95,12 @@ export async function createIssues(
         continue;
       }
 
+      // Dedup: skip if an issue with a matching title already exists
+      if (existingTitles.has(title.toLowerCase().trim())) {
+        logger.info(`Skipping duplicate issue: ${title}`);
+        continue;
+      }
+
       const args = [
         'issue', 'create',
         '--repo', repo,
@@ -94,6 +124,8 @@ export async function createIssues(
       if (match) {
         const num = parseInt(match[1], 10);
         created.push({ number: num, title: issue.title, labels: issue.labels });
+        // Track newly created title to prevent intra-batch duplicates
+        existingTitles.add(title.toLowerCase().trim());
         logger.info(`Created issue #${num}: ${issue.title}`);
       } else {
         logger.warn('Could not parse issue number from gh output', { output });
