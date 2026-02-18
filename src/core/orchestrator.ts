@@ -155,7 +155,7 @@ export class Orchestrator {
       // Phase 1: CEO → 2IC (strategy)
       this.state.cascadePhase = 'strategy';
       saveState(this.state);
-      const strategyMsg = await this.runLayer('2ic', 'ceo', directive);
+      let strategyMsg = await this.runLayer('2ic', 'ceo', directive);
       if (this.shuttingDown) {
         this.state.status = 'paused';
         saveState(this.state);
@@ -173,6 +173,19 @@ export class Orchestrator {
       if (!this.validateLayerOutput(strategyMsg)) {
         this.logger.error('Strategy message validation failed — aborting cascade');
         this.state.status = 'failed';
+        saveState(this.state);
+        return;
+      }
+
+      // Loopback: if 2IC asked CEO questions, answer them
+      strategyMsg = await this.resolveInfoRequests(strategyMsg, '2ic');
+      if (this.shuttingDown) {
+        this.state.status = 'paused';
+        saveState(this.state);
+        return;
+      }
+      if (!strategyMsg) {
+        if (this.state.status === 'running') this.state.status = 'failed';
         saveState(this.state);
         return;
       }
