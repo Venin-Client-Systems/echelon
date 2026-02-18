@@ -114,8 +114,14 @@ export function claimIssue(issueNumber: number): boolean {
   ensureDir(CLAIMS_DIR);
   const claimPath = claimFilePath(issueNumber);
 
-  // Check if claim file already exists
-  if (existsSync(claimPath)) {
+  // Try atomic claim first (wx flag fails if file already exists)
+  try {
+    const claim = { pid: process.pid, claimedAt: new Date().toISOString() };
+    writeFileSync(claimPath, JSON.stringify(claim), { encoding: 'utf-8', flag: 'wx' });
+    logger.debug(`Claimed issue #${issueNumber}`);
+    return true;
+  } catch (err) {
+    // File exists — check if stale and retry once
     try {
       const data = JSON.parse(readFileSync(claimPath, 'utf-8'));
       // Validate claim data structure
@@ -127,26 +133,27 @@ export function claimIssue(issueNumber: number): boolean {
         logger.debug(`Issue #${issueNumber} already claimed by PID ${data.pid}`);
         return false;
       }
-      // Stale claim — remove it
+      // Stale claim — remove it and retry claim atomically
       logger.debug(`Removing stale claim for issue #${issueNumber} (PID ${data.pid} dead)`);
       unlinkSync(claimPath);
-    } catch (err) {
-      // Corrupt claim file — remove it
-      logger.debug(`Removing corrupt claim file for issue #${issueNumber}: ${err instanceof Error ? err.message : err}`);
-      try { unlinkSync(claimPath); } catch { /* ignore */ }
-    }
-  }
 
-  // Atomic claim: wx flag fails if file already exists
-  try {
-    const claim = { pid: process.pid, claimedAt: new Date().toISOString() };
-    writeFileSync(claimPath, JSON.stringify(claim), { encoding: 'utf-8', flag: 'wx' });
-    logger.debug(`Claimed issue #${issueNumber}`);
-    return true;
-  } catch (err) {
-    // Another process created the file between our check and write — that's fine
-    logger.debug(`Failed to claim issue #${issueNumber} (likely claimed by another process)`);
-    return false;
+      // Retry claim immediately after removing stale claim
+      try {
+        const claim = { pid: process.pid, claimedAt: new Date().toISOString() };
+        writeFileSync(claimPath, JSON.stringify(claim), { encoding: 'utf-8', flag: 'wx' });
+        logger.debug(`Claimed issue #${issueNumber} after removing stale claim`);
+        return true;
+      } catch (retryErr) {
+        // Another process claimed between our unlink and write — that's fine
+        logger.debug(`Failed to claim issue #${issueNumber} after stale removal (race lost)`);
+        return false;
+      }
+    } catch (readErr) {
+      // Corrupt claim file or read error — try to remove and give up
+      logger.debug(`Corrupt/unreadable claim file for issue #${issueNumber}, removing: ${readErr instanceof Error ? readErr.message : readErr}`);
+      try { unlinkSync(claimPath); } catch { /* ignore */ }
+      return false; // Don't retry after corrupt file — avoid infinite loop
+    }
   }
 }
 

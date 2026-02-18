@@ -36,13 +36,14 @@ export async function withRetry<T>(
 ): Promise<T> {
   const config = { ...DEFAULT_RETRY, ...opts };
 
-  for (let attempt = 1; attempt <= config.maxRetries + 1; attempt++) {
+  // Attempt 1..maxRetries (inclusive), so maxRetries total attempts
+  for (let attempt = 1; attempt <= config.maxRetries; attempt++) {
     try {
       return await fn();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
 
-      if (attempt > config.maxRetries) {
+      if (attempt >= config.maxRetries) {
         logger.error(`${label}: all ${config.maxRetries} retries exhausted`, { error: msg });
         throw err;
       }

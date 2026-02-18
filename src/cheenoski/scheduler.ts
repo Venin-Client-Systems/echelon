@@ -457,8 +457,13 @@ export class Scheduler {
           } else if (result.errorType === 'rate_limit') {
             if (attempt < maxRetries) {
               slotLogger.warn(`All engines rate-limited, waiting before retry`);
-              await this.cleanupSlotWorktree(slot);
+              // Cleanup happens in finally block, check if stopped after sleep
               await sleep(30_000);
+              if (!this.running) {
+                slot.status = 'failed';
+                slot.error = 'Scheduler stopped during rate limit wait';
+                break;
+              }
               continue;
             }
             slot.status = 'failed';
@@ -466,7 +471,7 @@ export class Scheduler {
           } else if (isStuckResult(result)) {
             slot.error = 'No code changes detected';
             if (attempt < maxRetries) {
-              await this.cleanupSlotWorktree(slot);
+              // Cleanup happens in finally block
               continue;
             }
             slot.status = 'failed';
@@ -475,7 +480,7 @@ export class Scheduler {
           } else {
             slot.error = result.output.slice(0, 500);
             if (attempt < maxRetries) {
-              await this.cleanupSlotWorktree(slot);
+              // Cleanup happens in finally block
               continue;
             }
             slot.status = 'failed';
@@ -490,7 +495,7 @@ export class Scheduler {
             slotLogger.error(`Slot attempt ${attempt} failed: ${slot.error}`);
           }
           if (attempt < maxRetries) {
-            await this.cleanupSlotWorktree(slot);
+            // Cleanup happens in finally block
             continue;
           }
           slot.status = 'failed';

@@ -69,9 +69,10 @@ export async function mergeBranch(
 
   // 3. Stash any uncommitted changes in the main worktree
   let stashed = false;
-  const stashMessage = `cheenoski-pre-merge-${issueNumber}-${Date.now()}`;
+  // Include PID to ensure unique stash message even if same millisecond
+  const stashMessage = `cheenoski-pre-merge-${issueNumber}-${process.pid}-${Date.now()}`;
   const status = await git(['status', '--porcelain'], repoPath);
-  if (status.length > 0) {
+  if (status.trim().length > 0) {
     try {
       await git(['stash', 'push', '-m', stashMessage], repoPath);
       stashed = true;
@@ -86,8 +87,12 @@ export async function mergeBranch(
   }
 
   // 4. Save current branch so we can restore it after merging
+  // Note: detached HEAD returns empty string
   const currentBranch = await git(['branch', '--show-current'], repoPath);
-  if (currentBranch !== baseBranch) {
+  if (currentBranch && currentBranch.length > 0 && currentBranch !== baseBranch) {
+    await git(['checkout', baseBranch], repoPath);
+  } else if (!currentBranch || currentBranch.length === 0) {
+    // Detached HEAD state — just checkout base branch
     await git(['checkout', baseBranch], repoPath);
   }
 
@@ -132,8 +137,8 @@ export async function mergeBranch(
 
     return { success: false, error: msg };
   } finally {
-    // Restore original branch if we switched away
-    if (currentBranch && currentBranch !== baseBranch) {
+    // Restore original branch if we switched away (skip if detached HEAD or empty)
+    if (currentBranch && currentBranch.length > 0 && currentBranch !== baseBranch) {
       try {
         await git(['checkout', currentBranch], repoPath);
       } catch {
