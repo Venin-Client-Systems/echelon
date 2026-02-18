@@ -6,13 +6,40 @@ import type { IssuePayload } from '../lib/types.js';
 const execFileAsync = promisify(execFile);
 
 /**
+ * Ensure labels exist on the repo — create any that are missing.
+ */
+async function ensureLabels(labels: string[], repo: string): Promise<void> {
+  for (const label of labels) {
+    try {
+      await execFileAsync('gh', ['label', 'create', label, '--repo', repo, '--force'], {
+        encoding: 'utf-8',
+      });
+    } catch {
+      // Label may already exist or gh may not support --force; ignore
+    }
+  }
+}
+
+/**
  * Create GitHub issues via the `gh` CLI.
- * Returns an array of issue numbers.
+ * Returns an array of issue numbers for successfully created issues.
+ * Continues creating remaining issues even if one fails.
  */
 export async function createIssues(
   issues: IssuePayload[],
   repo: string,
 ): Promise<number[]> {
+  // Collect all unique labels and ensure they exist
+  const allLabels = new Set<string>();
+  for (const issue of issues) {
+    for (const label of issue.labels) {
+      allLabels.add(label);
+    }
+  }
+  if (allLabels.size > 0) {
+    await ensureLabels([...allLabels], repo);
+  }
+
   const numbers: number[] = [];
 
   for (const issue of issues) {
@@ -47,7 +74,7 @@ export async function createIssues(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error(`Failed to create issue: ${issue.title}`, { error: msg });
-      throw new Error(`gh issue create failed: ${msg}`);
+      // Continue with remaining issues instead of aborting
     }
   }
 

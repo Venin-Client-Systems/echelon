@@ -105,12 +105,20 @@ export class Orchestrator {
 
       // Phase 2: 2IC → Eng Lead (technical design)
       const designInput = this.buildDownwardPrompt(strategyMsg);
-      const designMsg = await this.runLayer('eng-lead', '2ic', designInput);
+      let designMsg = await this.runLayer('eng-lead', '2ic', designInput);
+      if (this.shuttingDown || !designMsg) return;
+
+      // Loopback: if Eng Lead asked 2IC questions, answer them
+      designMsg = await this.resolveInfoRequests(designMsg, 'eng-lead');
       if (this.shuttingDown || !designMsg) return;
 
       // Phase 3: Eng Lead → Team Lead (issue creation + execution)
-      const execInput = this.buildDownwardPrompt(designMsg);
-      const execMsg = await this.runLayer('team-lead', 'eng-lead', execInput);
+      const execInput = this.buildDownwardPrompt(designMsg, 'team-lead');
+      let execMsg = await this.runLayer('team-lead', 'eng-lead', execInput);
+      if (this.shuttingDown || !execMsg) return;
+
+      // Loopback: if Team Lead asked Eng Lead questions, answer them
+      execMsg = await this.resolveInfoRequests(execMsg, 'team-lead');
       if (this.shuttingDown || !execMsg) return;
 
       // Process any pending approvals in headless mode
@@ -258,20 +266,115 @@ export class Orchestrator {
   }
 
   /** Build prompt for downstream layer using upstream response */
-  private buildDownwardPrompt(upstreamMsg: LayerMessage): string {
+  private buildDownwardPrompt(upstreamMsg: LayerMessage, targetRole?: LayerId): string {
     const narrative = stripActionBlocks(upstreamMsg.content);
     const fromLabel = LAYER_LABELS[upstreamMsg.from];
-    return [
+
+    const parts = [
       `The ${fromLabel} has provided the following direction:`,
       '',
       narrative,
+    ];
+
+    if (upstreamMsg.actions.length > 0) {
+      parts.push('', `They have also initiated these actions: ${upstreamMsg.actions.map(a => a.action).join(', ')}`);
+    }
+
+    // Specific instructions for the Team Lead
+    if (targetRole === 'team-lead') {
+      parts.push(
+        '',
+        'INSTRUCTION: Convert the above task specifications into a create_issues action block.',
+        'Put ALL issues in a single create_issues action, then invoke_cheenoski for the highest-priority batch.',
+        'Do this NOW — emit the JSON action blocks immediately.',
+      );
+    } else {
+      parts.push('', 'Based on this, proceed with your responsibilities. Be thorough and specific.');
+    }
+
+    return parts.join('\n');
+  }
+
+  /**
+   * Resolve request_info actions by looping back to the target layer.
+   * If a layer asked questions, resume the target layer with those questions,
+   * then resume the requesting layer with the answers.
+   * Max 2 rounds to prevent infinite loops.
+   */
+  private async resolveInfoRequests(
+    msg: LayerMessage,
+    requestingRole: LayerId,
+    round = 0,
+  ): Promise<LayerMessage | null> {
+    const MAX_LOOPBACK_ROUNDS = 2;
+    if (round >= MAX_LOOPBACK_ROUNDS) return msg;
+
+    // Collect request_info actions targeting upstream layers
+    const infoRequests = msg.actions.filter(
+      (a): a is Action & { action: 'request_info' } =>
+        a.action === 'request_info',
+    );
+
+    if (infoRequests.length === 0) return msg;
+
+    // Group questions by target
+    const questionsByTarget = new Map<string, string[]>();
+    for (const req of infoRequests) {
+      const existing = questionsByTarget.get(req.target) ?? [];
+      existing.push(req.question);
+      questionsByTarget.set(req.target, existing);
+    }
+
+    // For each target, resume their session with the questions
+    const answers: string[] = [];
+    for (const [target, questions] of questionsByTarget) {
+      // Only handle upstream layers that have sessions (skip 'ceo')
+      if (target === 'ceo') continue;
+      const targetRole = target as LayerId;
+      const targetState = this.state.agents[targetRole];
+      if (!targetState?.sessionId) continue;
+
+      const questionPrompt = [
+        `The ${LAYER_LABELS[requestingRole]} has the following questions before proceeding:`,
+        '',
+        ...questions.map((q, i) => `${i + 1}. ${q}`),
+        '',
+        'Please provide clear, specific answers so they can proceed immediately.',
+        'Be decisive — give concrete recommendations, not options.',
+      ].join('\n');
+
+      logger.info(`Loopback: ${LAYER_LABELS[requestingRole]} → ${LAYER_LABELS[targetRole]}`, {
+        questions: questions.length,
+        round: round + 1,
+      });
+
+      const answerMsg = await this.runLayer(targetRole, requestingRole, questionPrompt);
+      if (this.shuttingDown || !answerMsg) return null;
+
+      answers.push(stripActionBlocks(answerMsg.content));
+    }
+
+    if (answers.length === 0) return msg;
+
+    // Feed answers back to the requesting layer
+    const answerPrompt = [
+      'Your questions have been answered:',
       '',
-      upstreamMsg.actions.length > 0
-        ? `They have also initiated these actions: ${upstreamMsg.actions.map(a => a.action).join(', ')}`
-        : null,
+      ...answers,
       '',
-      'Based on this, proceed with your responsibilities. Be thorough and specific.',
-    ].filter(s => s !== null && s !== undefined).join('\n');
+      'Now proceed with your primary responsibilities IMMEDIATELY.',
+      'Create issues and invoke cheenoski. Do not ask further questions.',
+    ].join('\n');
+
+    logger.info(`Loopback: feeding answers back to ${LAYER_LABELS[requestingRole]}`, {
+      round: round + 1,
+    });
+
+    const updatedMsg = await this.runLayer(requestingRole, 'eng-lead', answerPrompt);
+    if (this.shuttingDown || !updatedMsg) return null;
+
+    // Recursively resolve if new questions were asked (up to MAX_LOOPBACK_ROUNDS)
+    return this.resolveInfoRequests(updatedMsg, requestingRole, round + 1);
   }
 
   /** Get the downstream role for a given layer */
