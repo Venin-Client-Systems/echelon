@@ -28,6 +28,7 @@ export class Orchestrator {
   readonly transcript: TranscriptWriter;
   private shuttingDown = false;
   private cascadeRunning = false;
+  private cascadeStartedAt = 0;
   private readonly dryRun: boolean;
   private readonly yolo: boolean;
   private signalHandlersInstalled = false;
@@ -78,6 +79,7 @@ export class Orchestrator {
       return;
     }
     this.cascadeRunning = true;
+    this.cascadeStartedAt = Date.now();
     this.state.directive = directive;
     this.state.status = 'running';
     saveState(this.state);
@@ -119,6 +121,14 @@ export class Orchestrator {
         return;
       }
 
+      // Check cascade timeout before Phase 2
+      if (this.isCascadeTimedOut()) {
+        this.state.status = 'failed';
+        saveState(this.state);
+        logger.error('Cascade aborted: duration timeout exceeded before Eng Lead phase');
+        return;
+      }
+
       // Phase 2: 2IC → Eng Lead (technical design)
       const designInput = this.buildDownwardPrompt(strategyMsg);
       let designMsg = await this.runLayer('eng-lead', '2ic', designInput);
@@ -140,6 +150,14 @@ export class Orchestrator {
       if (this.shuttingDown || !designMsg) {
         this.state.status = 'paused';
         saveState(this.state);
+        return;
+      }
+
+      // Check cascade timeout before Phase 3
+      if (this.isCascadeTimedOut()) {
+        this.state.status = 'failed';
+        saveState(this.state);
+        logger.error('Cascade aborted: duration timeout exceeded before Team Lead phase');
         return;
       }
 
@@ -521,6 +539,20 @@ export class Orchestrator {
     console.log(`     Model: ${this.config.layers['team-lead'].model}, Budget: ${fmtBudget(this.config.layers['team-lead'].maxBudgetUsd)}`);
     console.log(`  4. Team Lead → Engineers: Cheenoski (max ${this.config.engineers.maxParallel} parallel)`);
     console.log('\n=== END DRY RUN ===\n');
+  }
+
+  /** Check if the cascade has exceeded its max duration */
+  private isCascadeTimedOut(): boolean {
+    if (this.cascadeStartedAt === 0) return false;
+    const maxMs = this.config.maxCascadeDurationMs ?? 1_800_000;
+    const elapsed = Date.now() - this.cascadeStartedAt;
+    if (elapsed > maxMs) {
+      const elapsedMin = (elapsed / 60_000).toFixed(1);
+      const maxMin = (maxMs / 60_000).toFixed(0);
+      logger.error(`Cascade timed out after ${elapsedMin}min (max: ${maxMin}min) — aborting gracefully`);
+      return true;
+    }
+    return false;
   }
 
   /** Graceful shutdown — kills Cheenoski subprocesses, saves state */

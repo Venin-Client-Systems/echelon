@@ -514,11 +514,32 @@ export class Scheduler {
 
   private async tick(): Promise<void> {
     const stuckWarningMs = this.config.engineers.stuckWarningMs ?? 120_000;
+    const maxSlotDurationMs = this.config.engineers.maxSlotDurationMs ?? 600_000;
 
     for (const slot of this.slots) {
       if (slot.status !== 'running' || !slot.startedAt) continue;
 
       const elapsed = Date.now() - new Date(slot.startedAt).getTime();
+
+      // Hard kill: if slot exceeds max duration, kill the engine process.
+      // The runSlot() error handler will catch the resulting failure and handle retries.
+      if (elapsed > maxSlotDurationMs) {
+        const elapsedSec = (elapsed / 1000).toFixed(0);
+        logger.error(`Slot #${slot.issueNumber} killed after ${elapsedSec}s — exceeded max slot duration (${(maxSlotDurationMs / 1000).toFixed(0)}s)`);
+
+        // Kill the engine process — runSlot's catch block will handle retry/failure
+        const engine = this.activeEngines.get(slot.id);
+        if (engine) {
+          try {
+            engine.kill();
+          } catch (err) {
+            logger.warn(`Failed to kill engine for slot #${slot.issueNumber}: ${err instanceof Error ? err.message : err}`);
+          }
+          this.unregisterEngine(slot.id);
+        }
+        continue;
+      }
+
       // Warn once at threshold and then every 60s after
       if (elapsed > stuckWarningMs) {
         const sinceThreshold = elapsed - stuckWarningMs;
