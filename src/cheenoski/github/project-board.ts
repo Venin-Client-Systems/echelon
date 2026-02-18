@@ -65,7 +65,13 @@ async function getProjectMetadata(repo: string, projectNumber: number): Promise<
     if (cached)
         return cached;
 
-    const owner = repo.split('/')[0];
+    const parts = repo.split('/');
+    if (parts.length !== 2) {
+        logger.warn(`Invalid repo format: expected "owner/repo", got "${repo}"`);
+        return null;
+    }
+
+    const [owner] = parts;
     const query = `query($owner: String!, $projectNumber: Int!) {
     organization(login: $owner) {
       projectV2(number: $projectNumber) {
@@ -117,8 +123,13 @@ async function getProjectMetadata(repo: string, projectNumber: number): Promise<
 
 /** Get the item ID for an issue in a project */
 async function getProjectItemId(repo: string, projectNumber: number, issueNumber: number): Promise<string | null> {
-    const owner = repo.split('/')[0];
-    const repoName = repo.split('/')[1];
+    const parts = repo.split('/');
+    if (parts.length !== 2) {
+        logger.warn(`Invalid repo format: expected "owner/repo", got "${repo}"`);
+        return null;
+    }
+
+    const [owner, repoName] = parts;
     const query = `query($owner: String!, $repoName: String!, $issueNumber: Int!) {
     repository(owner: $owner, name: $repoName) {
       issue(number: $issueNumber) {

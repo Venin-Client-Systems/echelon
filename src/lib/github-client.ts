@@ -20,7 +20,8 @@ interface CachedResponse {
 }
 
 /**
- * Exponential backoff retry with jitter
+ * Exponential backoff retry with jitter.
+ * maxRetries = total number of attempts (e.g., maxRetries=3 means try up to 3 times)
  */
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
@@ -30,7 +31,8 @@ async function retryWithBackoff<T>(
 ): Promise<T> {
   let lastError: Error | undefined;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  // Attempt 0 to maxRetries-1 (e.g., 0, 1, 2 for maxRetries=3)
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       return await fn();
     } catch (err) {
@@ -40,7 +42,8 @@ async function retryWithBackoff<T>(
       const is429 = lastError.message.includes('429') ||
                     lastError.message.toLowerCase().includes('rate limit');
 
-      if (!is429 || attempt === maxRetries) {
+      // On last attempt or non-rate-limit error, throw
+      if (!is429 || attempt >= maxRetries - 1) {
         throw lastError;
       }
 
@@ -57,7 +60,8 @@ async function retryWithBackoff<T>(
     }
   }
 
-  throw lastError;
+  // Unreachable (TypeScript needs it)
+  throw lastError ?? new Error('Retry logic error');
 }
 
 /**

@@ -52,30 +52,6 @@ Here's my plan:
       });
     });
 
-    it('should parse a valid invoke_ralphy action', () => {
-      const text = `
-Let me invoke Ralphy:
-
-\`\`\`json
-{
-  "action": "invoke_ralphy",
-  "label": "ralphy-1",
-  "maxParallel": 3
-}
-\`\`\`
-`;
-
-      const { actions, errors } = parseActions(text);
-
-      expect(actions).toHaveLength(1);
-      expect(errors).toHaveLength(0);
-      expect(actions[0]).toMatchObject({
-        action: 'invoke_ralphy',
-        label: 'ralphy-1',
-        maxParallel: 3,
-      });
-    });
-
     it('should parse a valid update_plan action', () => {
       const text = `
 \`\`\`json

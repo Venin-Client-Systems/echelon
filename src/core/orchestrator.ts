@@ -153,7 +153,9 @@ export class Orchestrator {
 
     try {
       // Phase 1: CEO → 2IC (strategy)
-      const strategyMsg = await this.runLayer('2ic', 'ceo', directive);
+      this.state.cascadePhase = 'strategy';
+      saveState(this.state);
+      let strategyMsg = await this.runLayer('2ic', 'ceo', directive);
       if (this.shuttingDown) {
         this.state.status = 'paused';
         saveState(this.state);
@@ -175,6 +177,19 @@ export class Orchestrator {
         return;
       }
 
+      // Loopback: if 2IC asked CEO questions, answer them
+      strategyMsg = await this.resolveInfoRequests(strategyMsg, '2ic');
+      if (this.shuttingDown) {
+        this.state.status = 'paused';
+        saveState(this.state);
+        return;
+      }
+      if (!strategyMsg) {
+        if (this.state.status === 'running') this.state.status = 'failed';
+        saveState(this.state);
+        return;
+      }
+
       // Check cascade timeout before Phase 2
       if (this.isCascadeTimedOut()) {
         this.state.status = 'failed';
@@ -184,6 +199,8 @@ export class Orchestrator {
       }
 
       // Phase 2: 2IC → Eng Lead (technical design)
+      this.state.cascadePhase = 'design';
+      saveState(this.state);
       const designInput = await this.buildDownwardPrompt(strategyMsg);
       let designMsg = await this.runLayer('eng-lead', '2ic', designInput);
       if (this.shuttingDown) {
@@ -226,6 +243,8 @@ export class Orchestrator {
       }
 
       // Phase 3: Eng Lead → Team Lead (issue creation + execution)
+      this.state.cascadePhase = 'execution';
+      saveState(this.state);
       const execInput = await this.buildDownwardPrompt(designMsg, 'team-lead');
       let execMsg = await this.runLayer('team-lead', 'eng-lead', execInput);
       if (this.shuttingDown) {
@@ -268,6 +287,7 @@ export class Orchestrator {
       }
 
       this.state.status = 'completed';
+      this.state.cascadePhase = 'complete';
       saveState(this.state);
       this.bus.emitEchelon({ type: 'cascade_complete', directive });
 
@@ -340,6 +360,7 @@ export class Orchestrator {
             timeoutMs: layerConfig.timeoutMs,
             cwd: this.config.project.path,
             maxBudgetUsd: layerConfig.maxBudgetUsd - agentState.totalCost,
+            yolo: false, // Management layers NEVER get yolo mode
           })
         : await spawnAgent(input, {
             model: layerConfig.model,
@@ -348,13 +369,19 @@ export class Orchestrator {
             maxTurns,
             timeoutMs: layerConfig.timeoutMs,
             cwd: this.config.project.path,
+            yolo: false, // Management layers NEVER get yolo mode
           });
 
       // Update agent state
       agentState.sessionId = response.sessionId;
-      agentState.totalCost += response.costUsd;
       agentState.turnsCompleted++;
-      this.state.totalCost += response.costUsd;
+
+      // Only track costs when billing is 'api' (real costs)
+      // When billing is 'max', costs are estimates and should not be tracked
+      if (this.config.billing !== 'max') {
+        agentState.totalCost += response.costUsd;
+        this.state.totalCost += response.costUsd;
+      }
 
       this.bus.emitEchelon({
         type: 'cost_update',
@@ -363,8 +390,8 @@ export class Orchestrator {
         totalUsd: this.state.totalCost,
       });
 
-      // Parse actions from response
-      const { actions, errors } = parseActions(response.content);
+      // Parse actions from response (also extracts narrative in one pass)
+      const { actions, narrative, errors } = parseActions(response.content);
       if (errors.length > 0) {
         layerLogger.warn(`${LAYER_LABELS[role]} had action parse errors`, { errors });
       }
@@ -372,7 +399,7 @@ export class Orchestrator {
       // Determine message target (next layer down or same layer for info requests)
       const target = this.getDownstreamRole(role);
 
-      // Build layer message
+      // Build layer message (store full content for history, use narrative for logging)
       const msg: LayerMessage = {
         id: nanoid(12),
         from: role,
@@ -399,8 +426,7 @@ export class Orchestrator {
       updateAgentStatus(this.state, role, 'done');
       this.bus.emitEchelon({ type: 'agent_status', role, status: 'done' });
 
-      // Log summary
-      const narrative = stripActionBlocks(response.content);
+      // Log summary (narrative was already extracted during parseActions)
       layerLogger.info(`[${LAYER_LABELS[role]}] ${narrative.slice(0, 150)}...`, {
         cost: `$${response.costUsd.toFixed(4)}`,
         duration: `${(response.durationMs / 1000).toFixed(1)}s`,
@@ -461,19 +487,26 @@ export class Orchestrator {
     }
 
     // For Team Lead: inject existing open issues to prevent duplicates
+    // Limit to 20 most recent to avoid token waste
     if (targetRole === 'team-lead') {
       try {
         const { stdout } = await githubClient.exec([
           'issue', 'list',
           '--repo', this.config.project.repo,
           '--state', 'open',
-          '--limit', '100',
+          '--limit', '20', // Reduced from 100 to limit token usage
           '--json', 'number,title,labels',
         ]);
         const existingIssues = JSON.parse(stdout) as Array<{ number: number; title: string; labels: Array<{ name: string }> }>;
-        if (existingIssues.length > 0) {
+
+        // Filter to only show issues with cheenoski labels (likely related to current work)
+        const relevantIssues = existingIssues.filter(issue =>
+          issue.labels.some(l => l.name.startsWith('cheenoski-') || l.name.startsWith('ralphy-'))
+        );
+
+        if (relevantIssues.length > 0) {
           parts.push('', '## Existing Open Issues (DO NOT create duplicates)');
-          for (const issue of existingIssues) {
+          for (const issue of relevantIssues) {
             const labels = issue.labels.map(l => l.name).join(', ');
             parts.push(`- #${issue.number}: ${issue.title} [${labels}]`);
           }
@@ -508,13 +541,29 @@ export class Orchestrator {
     round = 0,
   ): Promise<LayerMessage | null> {
     const MAX_LOOPBACK_ROUNDS = 2;
-    if (round >= MAX_LOOPBACK_ROUNDS) return msg;
 
     // Collect request_info actions targeting upstream layers
     const infoRequests = msg.actions.filter(
       (a): a is Action & { action: 'request_info' } =>
         a.action === 'request_info',
     );
+
+    // Check if we've hit max rounds with unresolved questions
+    if (round >= MAX_LOOPBACK_ROUNDS) {
+      if (infoRequests.length > 0) {
+        const questions = infoRequests.map(r => r.question).join('; ');
+        const errorMsg = `${LAYER_LABELS[requestingRole]} still has unresolved questions after ${MAX_LOOPBACK_ROUNDS} loopback rounds: ${questions}`;
+        this.logger.error(errorMsg);
+        this.bus.emitEchelon({
+          type: 'error',
+          role: requestingRole,
+          error: errorMsg,
+        });
+        // Return null to fail the cascade — we can't proceed with incomplete information
+        return null;
+      }
+      return msg;
+    }
 
     if (infoRequests.length === 0) return msg;
 
@@ -552,7 +601,9 @@ export class Orchestrator {
       const answerMsg = await this.runLayer(targetRole, requestingRole, questionPrompt);
       if (this.shuttingDown || !answerMsg) return null;
 
-      answers.push(stripActionBlocks(answerMsg.content));
+      // Extract narrative (runLayer already parsed actions, we just need text without blocks)
+      const { narrative: answerNarrative } = parseActions(answerMsg.content);
+      answers.push(answerNarrative);
     }
 
     if (answers.length === 0) return msg;
@@ -585,17 +636,28 @@ export class Orchestrator {
     const ROLE_ALLOWED_ACTIONS: Record<LayerId, Set<string>> = {
       '2ic': new Set(['update_plan', 'request_info', 'escalate']),
       'eng-lead': new Set(['update_plan', 'create_branch', 'request_info', 'escalate']),
-      'team-lead': new Set(['create_issues', 'invoke_cheenoski', 'invoke_ralphy', 'request_info', 'request_review']),
+      'team-lead': new Set(['create_issues', 'invoke_cheenoski', 'request_info', 'request_review']),
     };
 
     const allowed = ROLE_ALLOWED_ACTIONS[role];
     if (!allowed) return actions;
 
-    return actions.filter((action) => {
+    const filtered = actions.filter((action) => {
       if (allowed.has(action.action)) return true;
-      this.logger.warn(`Dropping "${action.action}" from ${LAYER_LABELS[role]} — not in allowed actions for this role`);
+
+      // Emit error event for dropped action so it's visible in the system
+      const errorMsg = `Action "${action.action}" not allowed for ${LAYER_LABELS[role]} role. Allowed actions: ${[...allowed].join(', ')}`;
+      this.logger.error(errorMsg);
+      this.bus.emitEchelon({
+        type: 'error',
+        role,
+        error: errorMsg,
+      });
+
       return false;
     });
+
+    return filtered;
   }
 
   /** Get the downstream role for a given layer */

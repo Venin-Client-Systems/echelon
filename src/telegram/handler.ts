@@ -168,6 +168,7 @@ export async function handleMessage(text: string, config: EchelonConfig): Promis
   const messages: StoredMessage[] = [...history, { role: 'user', content: text }];
 
   let response: Anthropic.Messages.Message;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
   try {
     response = await Promise.race([
       client.messages.create({
@@ -177,11 +178,15 @@ export async function handleMessage(text: string, config: EchelonConfig): Promis
         tools: ceoTools,
         messages: messages as Anthropic.Messages.MessageParam[],
       }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Claude API timeout')), API_TIMEOUT_MS)
-      ),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Claude API timeout')), API_TIMEOUT_MS);
+      }),
     ]);
+    // Clear timeout if API call succeeded
+    if (timeoutId !== null) clearTimeout(timeoutId);
   } catch (err) {
+    // Clear timeout on error too
+    if (timeoutId !== null) clearTimeout(timeoutId);
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Claude API error: ${sanitizeError(msg)}`);
   }
@@ -235,6 +240,7 @@ export async function handleMessage(text: string, config: EchelonConfig): Promis
     messages.push({ role: 'assistant', content: response.content });
     messages.push({ role: 'user', content: toolResults });
 
+    let toolLoopTimeoutId: ReturnType<typeof setTimeout> | null = null;
     try {
       response = await Promise.race([
         client.messages.create({
@@ -244,11 +250,15 @@ export async function handleMessage(text: string, config: EchelonConfig): Promis
           tools: ceoTools,
           messages: messages as Anthropic.Messages.MessageParam[],
         }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Claude API timeout')), API_TIMEOUT_MS)
-        ),
+        new Promise<never>((_, reject) => {
+          toolLoopTimeoutId = setTimeout(() => reject(new Error('Claude API timeout')), API_TIMEOUT_MS);
+        }),
       ]);
+      // Clear timeout if API call succeeded
+      if (toolLoopTimeoutId !== null) clearTimeout(toolLoopTimeoutId);
     } catch (err) {
+      // Clear timeout on error too
+      if (toolLoopTimeoutId !== null) clearTimeout(toolLoopTimeoutId);
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(`Claude API error: ${sanitizeError(msg)}`);
     }

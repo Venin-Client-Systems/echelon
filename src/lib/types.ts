@@ -169,13 +169,6 @@ export const InvokeCheenoskiActionSchema = z.object({
   maxParallel: z.number().int().positive().optional(),
 });
 
-/** @deprecated Use InvokeCheenoskiActionSchema */
-export const InvokeRalphyActionSchema = z.object({
-  action: z.literal('invoke_ralphy'),
-  label: z.string(),
-  maxParallel: z.number().int().positive().optional(),
-});
-
 export const UpdatePlanActionSchema = z.object({
   action: z.literal('update_plan'),
   plan: z.string(),
@@ -217,7 +210,6 @@ export const CreateBranchActionSchema = z.object({
 export const ActionSchema = z.discriminatedUnion('action', [
   CreateIssuesActionSchema,
   InvokeCheenoskiActionSchema,
-  InvokeRalphyActionSchema,
   UpdatePlanActionSchema,
   RequestInfoActionSchema,
   EscalateActionSchema,
@@ -297,6 +289,7 @@ export interface EchelonState {
   sessionId: string;
   projectRepo: string;
   status: 'running' | 'paused' | 'completed' | 'failed';
+  cascadePhase: 'idle' | 'strategy' | 'design' | 'execution' | 'complete';
   agents: Record<AgentRole, AgentState>;
   messages: LayerMessage[];
   plan: string | null;

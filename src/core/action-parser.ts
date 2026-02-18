@@ -11,7 +11,7 @@ import { logger } from '../lib/logger.js';
  *
  * @category Core
  * @param text - Raw agent response text
- * @returns Object containing parsed actions and validation errors
+ * @returns Object containing parsed actions, narrative (with action blocks removed), and validation errors
  * @example
  * ```typescript
  * const response = `
@@ -21,13 +21,15 @@ import { logger } from '../lib/logger.js';
  * \`\`\`
  * `;
  *
- * const { actions, errors } = parseActions(response);
+ * const { actions, narrative, errors } = parseActions(response);
  * console.log(actions); // [{ action: 'update_plan', plan: '...' }]
+ * console.log(narrative); // "Here's my plan:"
  * ```
  */
-export function parseActions(text: string): { actions: Action[]; errors: string[] } {
+export function parseActions(text: string): { actions: Action[]; narrative: string; errors: string[] } {
   const actions: Action[] = [];
   const errors: string[] = [];
+  const actionBlockRanges: Array<[number, number]> = []; // Track ranges to remove for narrative
 
   // Find all ```json openers
   const openerRegex = /```json\s*\n/gi;
@@ -66,6 +68,8 @@ export function parseActions(text: string): { actions: Action[]; errors: string[
         }
 
         if (hasAction) {
+          // Record range for narrative extraction
+          actionBlockRanges.push([openerMatch.index, closerMatch.index + closerMatch[0].length]);
           // Advance the opener regex past this block to avoid re-matching
           openerRegex.lastIndex = closerMatch.index + closerMatch[0].length;
           parsed = true;
@@ -87,11 +91,22 @@ export function parseActions(text: string): { actions: Action[]; errors: string[
     }
   }
 
-  return { actions, errors };
+  // Build narrative by removing all action block ranges
+  let narrative = text;
+  for (let i = actionBlockRanges.length - 1; i >= 0; i--) {
+    narrative = narrative.slice(0, actionBlockRanges[i][0]) + narrative.slice(actionBlockRanges[i][1]);
+  }
+  // Clean up excessive newlines
+  narrative = narrative.replace(/\n{3,}/g, '\n\n').trim();
+
+  return { actions, narrative, errors };
 }
 
 /**
  * Remove action blocks from text to extract the narrative portion.
+ *
+ * @deprecated Use parseActions() instead, which returns both actions and narrative in one pass.
+ * This function is kept for backwards compatibility but performs redundant regex parsing.
  *
  * Uses the same progressive matching as parseActions to correctly handle
  * embedded backticks in JSON strings. Cleans up excessive newlines.

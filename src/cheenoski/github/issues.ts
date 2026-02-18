@@ -22,10 +22,10 @@ export async function fetchIssuesByLabel(
     return raw.map((issue: any) => ({
       number: issue.number,
       title: issue.title,
-      body: issue.body,
+      body: issue.body ?? '', // GitHub API returns null for empty issue bodies
       labels: (issue.labels ?? []).map((l: any) => l.name),
       state: issue.state.toLowerCase(),
-      assignees: issue.assignees.map((a: any) => a.login),
+      assignees: (issue.assignees ?? []).map((a: any) => a.login),
       url: issue.url,
     }));
   } catch (err) {
@@ -52,12 +52,16 @@ export async function closeIssue(
     }
   }
 
-  await githubClient.exec([
-    'issue', 'close', String(issueNumber),
-    '--repo', repo,
-  ]);
-
-  logger.info(`Closed issue #${issueNumber}`);
+  try {
+    await githubClient.exec([
+      'issue', 'close', String(issueNumber),
+      '--repo', repo,
+    ]);
+    logger.info(`Closed issue #${issueNumber}`);
+  } catch (err) {
+    logger.warn(`Failed to close issue #${issueNumber}: ${err instanceof Error ? err.message : err}`);
+    // Don't throw — make closing best-effort to avoid failing entire slot on network blip
+  }
 }
 
 /** Add a comment to an issue */
