@@ -4,6 +4,9 @@
     <strong>A hierarchical multi-agent AI orchestrator that turns a single directive into a full engineering org.</strong>
   </p>
   <p align="center">
+    <a href="https://github.com/Venin-Client-Systems/echelon/actions/workflows/ci.yml"><img src="https://github.com/Venin-Client-Systems/echelon/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
+  </p>
+  <p align="center">
     <a href="#installation">Installation</a> &middot;
     <a href="#quick-start">Quick Start</a> &middot;
     <a href="#how-it-works">How It Works</a> &middot;

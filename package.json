@@ -32,7 +32,10 @@
     "test:watch": "vitest --watch",
     "test:vitest": "vitest",
     "test:node-only": "tsx --test src/core/__tests__/error-boundaries.test.ts src/lib/__tests__/config.test.ts",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "docs:api": "typedoc"
   },
   "dependencies": {
@@ -45,11 +48,14 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.13.4",
     "@types/react": "^18.3.18",
+    "eslint": "^10.0.0",
     "tsx": "^4.19.3",
     "typedoc": "^0.28.17",
     "typescript": "^5.7.3",
+    "typescript-eslint": "^8.56.0",
     "vitest": "^4.0.18"
   },
   "engines": {

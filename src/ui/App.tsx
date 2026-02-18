@@ -23,7 +23,7 @@ export function App({ orchestrator, initialDirective }: AppProps) {
     if (initialDirective) {
       echelon.sendDirective(initialDirective);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
 
   const handleInput = useCallback((input: string) => {
     // Parse commands
