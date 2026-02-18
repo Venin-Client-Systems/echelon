@@ -67,6 +67,16 @@ export type EngineersConfig = z.infer<typeof EngineersConfigSchema>;
 export type TelegramHealthConfig = z.infer<typeof TelegramHealthConfigSchema>;
 export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
 
+// --- GitHub Rate Limiting ---
+
+export const RateLimitStateSchema = z.object({
+  remaining: z.number().int(),
+  limit: z.number().int(),
+  reset: z.number().int(), // Unix timestamp
+});
+
+export type RateLimitState = z.infer<typeof RateLimitStateSchema>;
+
 // --- Layer Types ---
 
 export type LayerId = '2ic' | 'eng-lead' | 'team-lead';
