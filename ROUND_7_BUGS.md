@@ -242,17 +242,113 @@ async runCascade(directive: string): Promise<void> {
 
 ---
 
+---
+
+### 3. **Project Board repo.split() Missing Validation** - Potential Crash
+**File**: `src/cheenoski/github/project-board.ts:121`
+**Impact**: Undefined repoName passed to GraphQL query if repo is malformed
+
+```typescript
+// CURRENT CODE (BUGGY):
+async function getProjectItemId(repo: string, projectNumber: number, issueNumber: number): Promise<string | null> {
+    const owner = repo.split('/')[0];
+    const repoName = repo.split('/')[1];  // ❌ Can be undefined if repo has no '/'
+    const query = `query($owner: String!, $repoName: String!, $issueNumber: Int!) {
+    repository(owner: $owner, name: $repoName) {
+      // ...
+    }
+  }`;
+
+    try {
+        const data = await ghGraphQL(query, { owner, repoName, issueNumber });  // ❌ repoName might be undefined
+        // ...
+    } catch {
+        return null;
+    }
+}
+```
+
+**Problem**:
+- repo is expected to be in format "owner/reponame" (e.g., "octocat/Hello-World")
+- `repo.split('/')[0]` gets owner - safe (returns whole string if no '/')
+- `repo.split('/')[1]` gets reponame - **UNSAFE** (returns undefined if no '/')
+- If repo is malformed (e.g., "myrepo" instead of "owner/myrepo"):
+  - owner = "myrepo"
+  - repoName = undefined
+  - GraphQL query fails with undefined variable
+
+**Impact**:
+- GraphQL query will fail silently (catch block returns null)
+- Project board integration breaks for malformed repo names
+- No clear error message to user
+- Hard to debug - function just returns null
+
+**Fix**:
+```typescript
+async function getProjectItemId(repo: string, projectNumber: number, issueNumber: number): Promise<string | null> {
+    const parts = repo.split('/');
+    if (parts.length !== 2) {
+        logger.warn(`Invalid repo format: expected "owner/repo", got "${repo}"`);
+        return null;
+    }
+
+    const [owner, repoName] = parts;
+    const query = `query($owner: String!, $repoName: String!, $issueNumber: Int!) {
+    repository(owner: $owner, name: $repoName) {
+      issue(number: $issueNumber) {
+        projectItems(first: 10) {
+          nodes {
+            id
+            project { number }
+          }
+        }
+      }
+    }
+  }`;
+
+    try {
+        const data = await ghGraphQL(query, { owner, repoName, issueNumber });
+        const items = data.data?.repository?.issue?.projectItems?.nodes ?? [];
+        const match = items.find((item: any) => item.project?.number === projectNumber);
+        return match?.id ?? null;
+    } catch {
+        return null;
+    }
+}
+```
+
+**Similar issue in getProjectMetadata:**
+```typescript
+// Line 68
+const owner = repo.split('/')[0];  // ✓ Safe
+
+// Should also add validation:
+async function getProjectMetadata(repo: string, projectNumber: number): Promise<ProjectMetadata | null> {
+    const parts = repo.split('/');
+    if (parts.length !== 2) {
+        logger.warn(`Invalid repo format: expected "owner/repo", got "${repo}"`);
+        return null;
+    }
+
+    const [owner] = parts;
+    // ... rest of function
+}
+```
+
+---
+
 ## Summary
 
 **Round 7 Findings**:
-- 3 critical bugs (2 resource leaks + 1 logic bug)
+- 4 critical bugs (2 resource leaks + 1 logic bug + 1 validation bug)
 - Resource leak: ~100 leaked timers after 100 Telegram messages
 - Logic bug: 2IC cannot request CEO clarification
+- Validation bug: repo.split() can return undefined
 
 **Total Bugs Across All Rounds**:
 - **Rounds 1-6**: 33 bugs (28 fixed, 5 documented)
-- **Round 7**: 3 bugs (Promise.race leaks x2 + 2IC loopback missing)
-- **TOTAL**: 36 bugs identified
+- **Round 7**: 4 bugs (Promise.race leaks x2 + 2IC loopback + repo split validation)
+- **TOTAL**: 37 bugs identified
 
 **Files to Fix**:
 ```
