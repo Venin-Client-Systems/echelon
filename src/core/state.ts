@@ -16,10 +16,20 @@ function makeAgentState(role: AgentRole): EchelonState['agents'][AgentRole] {
   };
 }
 
+/** Validate session ID format to prevent path injection */
+function isValidSessionId(id: string): boolean {
+  // Must be alphanumeric with hyphens, no path separators
+  return /^[a-zA-Z0-9-]+$/.test(id) && !id.includes('..') && !id.includes('/') && !id.includes('\\');
+}
+
 /** Create a fresh session state */
 export function createState(config: EchelonConfig, directive: string): EchelonState {
   const now = new Date().toISOString();
-  const sessionId = `${config.project.repo.replace('/', '-')}-${now.slice(0, 19).replace(/[:.]/g, '-')}`;
+  const sessionId = `${config.project.repo.replace(/[^a-zA-Z0-9-]/g, '-')}-${now.slice(0, 19).replace(/[:.]/g, '-')}`;
+
+  if (!isValidSessionId(sessionId)) {
+    throw new Error(`Generated invalid session ID: ${sessionId}`);
+  }
 
   const agents = {} as EchelonState['agents'];
   for (const role of LAYER_ORDER) {
@@ -43,12 +53,22 @@ export function createState(config: EchelonConfig, directive: string): EchelonSt
 
 /** Save state atomically */
 export function saveState(state: EchelonState): void {
-  state.updatedAt = new Date().toISOString();
-  const dir = sessionDir(state.sessionId);
-  ensureDir(dir);
-  const path = join(dir, 'state.json');
-  atomicWriteJSON(path, state);
-  logger.debug('State saved', { session: state.sessionId });
+  if (!isValidSessionId(state.sessionId)) {
+    throw new Error(`Invalid session ID: ${state.sessionId}`);
+  }
+
+  try {
+    state.updatedAt = new Date().toISOString();
+    const dir = sessionDir(state.sessionId);
+    ensureDir(dir);
+    const path = join(dir, 'state.json');
+    atomicWriteJSON(path, state);
+    logger.debug('State saved', { session: state.sessionId });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('Failed to save state', { session: state.sessionId, error: msg });
+    throw new Error(`State save failed: ${msg}`);
+  }
 }
 
 /** Validate that a parsed object looks like EchelonState */
@@ -69,13 +89,24 @@ function isValidState(obj: unknown): obj is EchelonState {
 
 /** Load state from a session. Returns null if missing or corrupt. */
 export function loadState(sessionId: string): EchelonState | null {
-  const path = join(sessionDir(sessionId), 'state.json');
-  const data = readJSON<EchelonState>(path);
-  if (!isValidState(data)) {
-    if (data !== null) logger.warn('Corrupt session state', { session: sessionId });
+  if (!isValidSessionId(sessionId)) {
+    logger.warn('Invalid session ID format', { session: sessionId });
     return null;
   }
-  return data;
+
+  try {
+    const path = join(sessionDir(sessionId), 'state.json');
+    const data = readJSON<EchelonState>(path);
+    if (!isValidState(data)) {
+      if (data !== null) logger.warn('Corrupt session state', { session: sessionId });
+      return null;
+    }
+    return data;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.debug('Failed to load state', { session: sessionId, error: msg });
+    return null;
+  }
 }
 
 /** Find the most recent session for a repo */
@@ -97,5 +128,8 @@ export function updateAgentStatus(
   role: AgentRole,
   status: AgentStatus,
 ): void {
+  if (!state.agents[role]) {
+    throw new Error(`Agent role not found: ${role}`);
+  }
   state.agents[role].status = status;
 }

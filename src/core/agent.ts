@@ -159,6 +159,10 @@ export async function spawnAgent(
       const stdout = await runClaude(args, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.cwd);
       const output = parseOutput(stdout);
 
+      if (output.is_error === true) {
+        throw new Error(`Claude agent error: ${output.result}`);
+      }
+
       return {
         content: output.result,
         sessionId: output.session_id,
@@ -180,7 +184,7 @@ export async function spawnAgent(
 export async function resumeAgent(
   sessionId: string,
   prompt: string,
-  opts: { maxTurns?: number; timeoutMs?: number; cwd?: string },
+  opts: { maxTurns?: number; timeoutMs?: number; cwd?: string; maxBudgetUsd?: number },
 ): Promise<AgentResponse> {
   return withErrorBoundary(
     async () => {
@@ -193,9 +197,17 @@ export async function resumeAgent(
         '--max-turns', String(maxTurns),
       ];
 
+      if (opts.maxBudgetUsd != null && opts.maxBudgetUsd > 0) {
+        args.push('--max-budget-usd', String(opts.maxBudgetUsd));
+      }
+
       logger.debug('Resuming agent', { sessionId: sessionId.slice(0, 8), maxTurns });
       const stdout = await runClaude(args, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.cwd);
       const output = parseOutput(stdout);
+
+      if (output.is_error === true) {
+        throw new Error(`Claude agent error: ${output.result}`);
+      }
 
       return {
         content: output.result,

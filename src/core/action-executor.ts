@@ -6,16 +6,16 @@ import type {
 } from '../lib/types.js';
 import type { MessageBus } from './message-bus.js';
 import { createIssues } from '../actions/github-issues.js';
-import { invokeRalphy } from '../actions/ralphy.js';
+import { invokeCheenoski } from '../actions/cheenoski.js';
 import { createBranch } from '../actions/git.js';
 import { requestReview } from '../actions/review.js';
 
 /** Actions that require CEO approval in "destructive" mode */
-const DESTRUCTIVE_ACTIONS = new Set(['create_issues', 'invoke_ralphy', 'create_branch']);
+const DESTRUCTIVE_ACTIONS = new Set(['create_issues', 'invoke_cheenoski', 'invoke_ralphy', 'create_branch']);
 
 export class ActionExecutor {
   private pendingApprovals: Map<string, PendingApproval> = new Map();
-  private ralphyKillHandles: Array<{ label: string; kill: () => void }> = [];
+  private cheenoskiKillHandles: Array<{ label: string; kill: () => void }> = [];
 
   constructor(
     private config: EchelonConfig,
@@ -72,14 +72,13 @@ export class ActionExecutor {
   private async dispatch(action: Action): Promise<string> {
     switch (action.action) {
       case 'create_issues': {
-        const numbers = await createIssues(action.issues, this.config.project.repo);
-        for (let i = 0; i < numbers.length; i++) {
-          const issue = action.issues[i];
+        const created = await createIssues(action.issues, this.config.project.repo);
+        for (const ci of created) {
           this.state.issues.push({
-            number: numbers[i],
-            title: issue.title,
+            number: ci.number,
+            title: ci.title,
             state: 'open',
-            labels: issue.labels,
+            labels: ci.labels,
             assignedEngineer: null,
             prNumber: null,
           });
@@ -88,18 +87,23 @@ export class ActionExecutor {
             issue: this.state.issues[this.state.issues.length - 1],
           });
         }
-        return `Created issues: ${numbers.map(n => `#${n}`).join(', ')}`;
+        if (created.length === 0) {
+          return `No issues created (${action.issues.length} attempted)`;
+        }
+        return `Created ${created.length}/${action.issues.length} issues: ${created.map(c => `#${c.number}`).join(', ')}`;
       }
 
+      case 'invoke_cheenoski':
       case 'invoke_ralphy': {
-        const handle = invokeRalphy(
+        const handle = invokeCheenoski(
           action.label,
           this.config,
           action.maxParallel,
-          (line) => this.bus.emitEchelon({ type: 'ralphy_progress', label: action.label, line }),
+          this.bus,
+          (line) => this.bus.emitEchelon({ type: 'cheenoski_progress', label: action.label, line }),
         );
-        this.ralphyKillHandles.push({ label: action.label, kill: handle.kill });
-        return `Ralphy invoked for label: ${action.label}`;
+        this.cheenoskiKillHandles.push({ label: action.label, kill: handle.kill });
+        return `Cheenoski invoked for label: ${action.label}`;
       }
 
       case 'create_branch': {
@@ -172,16 +176,16 @@ export class ActionExecutor {
     return [...this.pendingApprovals.values()];
   }
 
-  /** Kill all running Ralphy subprocesses */
-  killAllRalphy(): void {
-    for (const handle of this.ralphyKillHandles) {
+  /** Kill all running Cheenoski subprocesses */
+  killAll(): void {
+    for (const handle of this.cheenoskiKillHandles) {
       try {
         handle.kill();
       } catch {
-        logger.debug(`Failed to kill Ralphy process: ${handle.label}`);
+        logger.debug(`Failed to kill Cheenoski process: ${handle.label}`);
       }
     }
-    this.ralphyKillHandles = [];
+    this.cheenoskiKillHandles = [];
   }
 }
 
@@ -189,8 +193,10 @@ function describeAction(action: Action): string {
   switch (action.action) {
     case 'create_issues':
       return `Create ${action.issues.length} issue(s): ${action.issues.map(i => i.title).join(', ')}`;
+    case 'invoke_cheenoski':
+      return `Run Cheenoski for label: ${action.label}`;
     case 'invoke_ralphy':
-      return `Run Ralphy for label: ${action.label}`;
+      return `Run Cheenoski for label: ${action.label}`;
     case 'update_plan':
       return `Update plan (${action.workstreams?.length ?? 0} workstreams)`;
     case 'request_info':

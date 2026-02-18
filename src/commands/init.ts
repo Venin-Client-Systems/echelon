@@ -1,7 +1,9 @@
 import { writeFileSync, existsSync } from 'node:fs';
-import { resolve as pathResolve } from 'node:path';
+import { resolve as pathResolve, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { detectGitRepo, type GitRepoInfo } from '../lib/git-detect.js';
+import { EchelonConfigSchema, type EchelonConfig } from '../lib/types.js';
 
 const DEFAULT_CONFIG_NAME = 'echelon.config.json';
 const VALID_MODELS = new Set(['opus', 'sonnet', 'haiku']);
@@ -67,11 +69,15 @@ interface PrereqResult {
 function checkClaude(): PrereqResult {
   const result: PrereqResult = { name: 'Claude CLI', installed: false, authenticated: false };
   try {
-    const version = execFileSync('claude', ['--version'], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+    const version = execFileSync('claude', ['--version'], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 5000 }).trim();
     result.installed = true;
     result.version = version;
-  } catch {
-    result.detail = 'Install: npm install -g @anthropic-ai/claude-code';
+  } catch (err) {
+    // Check if it's a timeout or command not found
+    const msg = err instanceof Error && 'code' in err ? String((err as any).code) : '';
+    if (msg === 'ENOENT') {
+      result.detail = 'Install: npm install -g @anthropic-ai/claude-code';
+    }
     return result;
   }
 
@@ -99,16 +105,19 @@ function checkClaude(): PrereqResult {
 function checkGh(): PrereqResult {
   const result: PrereqResult = { name: 'GitHub CLI', installed: false, authenticated: false };
   try {
-    const version = execFileSync('gh', ['--version'], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim().split('\n')[0];
+    const version = execFileSync('gh', ['--version'], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 5000 }).trim().split('\n')[0];
     result.installed = true;
     result.version = version;
-  } catch {
-    result.detail = 'Install: https://cli.github.com';
+  } catch (err) {
+    const msg = err instanceof Error && 'code' in err ? String((err as any).code) : '';
+    if (msg === 'ENOENT') {
+      result.detail = 'Install: https://cli.github.com';
+    }
     return result;
   }
 
   try {
-    execFileSync('gh', ['auth', 'status'], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    execFileSync('gh', ['auth', 'status'], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 5000 });
     result.authenticated = true;
   } catch {
     result.detail = 'Run: gh auth login';
@@ -119,12 +128,15 @@ function checkGh(): PrereqResult {
 function checkGit(): PrereqResult {
   const result: PrereqResult = { name: 'Git', installed: false, authenticated: false };
   try {
-    const version = execFileSync('git', ['--version'], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+    const version = execFileSync('git', ['--version'], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 5000 }).trim();
     result.installed = true;
     result.authenticated = true; // git doesn't have an auth step
     result.version = version;
-  } catch {
-    result.detail = 'Install: https://git-scm.com';
+  } catch (err) {
+    const msg = err instanceof Error && 'code' in err ? String((err as any).code) : '';
+    if (msg === 'ENOENT') {
+      result.detail = 'Install: https://git-scm.com';
+    }
   }
   return result;
 }
@@ -142,32 +154,7 @@ function checkNode(): PrereqResult {
 }
 
 // ── Git Repo Detection ──────────────────────────────────────────────
-
-function detectGitRepo(): { repo: string; path: string; branch: string } | null {
-  try {
-    const remote = execFileSync('git', ['remote', 'get-url', 'origin'], {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
-
-    const match = remote.match(/[:/]([^/]+\/[^/.]+?)(?:\.git)?$/);
-    const repo = match ? match[1] : '';
-
-    const path = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
-
-    const branch = execFileSync('git', ['symbolic-ref', '--short', 'HEAD'], {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
-
-    return { repo, path, branch };
-  } catch {
-    return null;
-  }
-}
+// detectGitRepo() is imported from ../lib/git-detect.js
 
 // ── Main ────────────────────────────────────────────────────────────
 
@@ -216,7 +203,7 @@ export async function runInit(): Promise<void> {
   if (detected) {
     ok(`Detected: ${detected.repo}`);
     dim(`Path: ${detected.path}`);
-    dim(`Branch: ${detected.branch}`);
+    dim(`Branch: ${detected.baseBranch}`);
     console.log('');
   } else {
     info('No git repo detected in current directory.');
@@ -224,9 +211,15 @@ export async function runInit(): Promise<void> {
     console.log('');
   }
 
-  const repo = await ask('  GitHub repo (owner/repo)', detected?.repo);
+  let repo = await ask('  GitHub repo (owner/repo)', detected?.repo);
+  // Validate repo format
+  while (repo && !/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+$/.test(repo)) {
+    console.log('  \x1b[31mInvalid repo format. Must be "owner/repo"\x1b[0m');
+    repo = await ask('  GitHub repo (owner/repo)', detected?.repo);
+  }
+
   const repoPath = await ask('  Repo path', detected?.path || process.cwd());
-  const baseBranch = await ask('  Base branch', detected?.branch || 'main');
+  const baseBranch = await ask('  Base branch', detected?.baseBranch || 'main');
 
   // ── Step 3: AI Models ───────────────────────────────────────────
 
@@ -328,4 +321,36 @@ export async function runInit(): Promise<void> {
   console.log('  \x1b[36m3.\x1b[0m Launch the TUI:');
   console.log(`     \x1b[1mechelon -c ${DEFAULT_CONFIG_NAME}\x1b[0m`);
   console.log('');
+}
+
+// ── Quick Init (first-run auto-discovery) ────────────────────────────
+
+export async function runQuickInit(detected: GitRepoInfo): Promise<EchelonConfig> {
+  console.log('');
+  info(`Detected: \x1b[1m${detected.repo}\x1b[0m`);
+  dim(`Path: ${detected.path}`);
+  console.log('');
+
+  const approvalMode = await askValidated(
+    '  Approval mode',
+    VALID_APPROVAL_MODES,
+    'destructive',
+  );
+
+  const config = EchelonConfigSchema.parse({
+    project: {
+      repo: detected.repo,
+      path: detected.path,
+      baseBranch: detected.baseBranch,
+    },
+    approvalMode,
+  });
+
+  // Write config to git root
+  const outPath = join(detected.path, DEFAULT_CONFIG_NAME);
+  writeFileSync(outPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+  ok(`Config written to ${outPath}`);
+  console.log('');
+
+  return config;
 }

@@ -9,6 +9,9 @@ export const ECHELON_HOME = join(homedir(), '.echelon');
 export const SESSIONS_DIR = join(ECHELON_HOME, 'sessions');
 
 export function sessionDir(sessionId: string): string {
+  if (sessionId.includes('..') || sessionId.includes('/') || sessionId.includes('\\')) {
+    throw new Error(`Invalid session ID: ${sessionId}`);
+  }
   return join(SESSIONS_DIR, sessionId);
 }
 
