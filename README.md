@@ -5,6 +5,9 @@
   </p>
   <p align="center">
     <a href="https://github.com/Venin-Client-Systems/echelon/actions/workflows/ci.yml"><img src="https://github.com/Venin-Client-Systems/echelon/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
+    <a href="https://codecov.io/gh/Venin-Client-Systems/echelon"><img src="https://codecov.io/gh/Venin-Client-Systems/echelon/branch/main/graph/badge.svg" alt="Coverage"></a>
+    <a href="https://www.npmjs.com/package/echelon"><img src="https://img.shields.io/npm/v/echelon.svg" alt="npm version"></a>
+    <a href="https://www.npmjs.com/package/echelon"><img src="https://img.shields.io/npm/dm/echelon.svg" alt="npm downloads"></a>
   </p>
   <p align="center">
     <a href="#installation">Installation</a> &middot;
