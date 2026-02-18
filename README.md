@@ -44,6 +44,8 @@ No agents to configure. No prompt chains to debug. One command.
 - **Terminal UI** &mdash; Real-time org chart, activity feed, issue tracker, and cost dashboard. Or run headless for CI/automation.
 - **Session persistence** &mdash; Save state, resume later. Agent context carries over via Claude session IDs.
 - **Zero-config auto-discovery** &mdash; Just `cd` into any git repo and run `echelon`. It detects your project and gets you started.
+- **Telegram bot mode** &mdash; Run Echelon as a Telegram bot. Chat with your CEO AI, approve actions, and monitor progress from your phone. Includes health monitoring and webhook support.
+- **Production-hardened** &mdash; Comprehensive error handling with circuit breakers, exponential backoff, and retry logic. Battle-tested with 37 bugs fixed across security, memory management, and race conditions.
 
 ## Prerequisites
 
@@ -153,6 +155,146 @@ If no config is found:
 
 ## How It Works
 
+### Complete User Journey
+
+```mermaid
+graph TD
+    Start([User runs echelon]) --> HasConfig{Config<br/>exists?}
+
+    %% No config path
+    HasConfig -->|No| IsGit{In git<br/>repo?}
+    IsGit -->|No| Error([Error: Not a git repo])
+    IsGit -->|Yes| IsTTY{Interactive<br/>terminal?}
+
+    IsTTY -->|Yes| QuickSetup[Quick Setup Prompt]
+    QuickSetup --> CreateConfig[Auto-generate config]
+    CreateConfig --> LaunchMode
+
+    IsTTY -->|No| InMemory[Generate in-memory defaults]
+    InMemory --> LaunchMode
+
+    %% Has config path
+    HasConfig -->|Yes| LoadConfig[Load config]
+    LoadConfig --> LaunchMode
+
+    %% Choose mode
+    LaunchMode{Launch<br/>mode?}
+    LaunchMode -->|--telegram| TelegramBot[Telegram Bot Mode]
+    LaunchMode -->|--headless| HeadlessMode[Headless Mode]
+    LaunchMode -->|--dry-run| DryRun[Dry Run - Show Plan]
+    LaunchMode -->|default| TUI[Terminal UI Mode]
+    LaunchMode -->|--resume| Resume[Resume Last Session]
+
+    %% Dry run path
+    DryRun --> ShowPlan[Display cascade plan]
+    ShowPlan --> Exit1([Exit])
+
+    %% Resume path
+    Resume --> LoadSession{Session<br/>found?}
+    LoadSession -->|No| Error2([Error: No session])
+    LoadSession -->|Yes| RestoreState[Restore state & agents]
+    RestoreState --> TUI
+
+    %% Main execution paths
+    TUI --> GetDirective[CEO enters directive]
+    HeadlessMode --> GetDirective
+    TelegramBot --> TelegramInput[Receive Telegram message]
+    TelegramInput --> GetDirective
+
+    GetDirective --> CheckBudget{Total budget<br/>available?}
+    CheckBudget -->|No| BudgetFail([Abort: Budget exceeded])
+    CheckBudget -->|Yes| Phase1
+
+    %% Phase 1: CEO → 2IC
+    Phase1[2IC: Strategic Planning] --> Budget2IC{2IC budget<br/>OK?}
+    Budget2IC -->|No| SavePause1([Save & Pause])
+    Budget2IC -->|Yes| Run2IC[Agent processes directive]
+    Run2IC --> Valid2IC{Valid<br/>output?}
+    Valid2IC -->|No| Fail2IC([Cascade failed])
+    Valid2IC -->|Yes| Loopback2IC{Info<br/>requests?}
+    Loopback2IC -->|Yes| CEOAnswer1[CEO answers questions]
+    CEOAnswer1 --> Run2IC
+    Loopback2IC -->|No| Phase2
+
+    %% Phase 2: 2IC → Eng Lead
+    Phase2[Eng Lead: Technical Design] --> BudgetLead{Lead budget<br/>OK?}
+    BudgetLead -->|No| SavePause2([Save & Pause])
+    BudgetLead -->|Yes| RunLead[Agent designs architecture]
+    RunLead --> ValidLead{Valid<br/>output?}
+    ValidLead -->|No| FailLead([Cascade failed])
+    ValidLead -->|Yes| LoopbackLead{Info<br/>requests?}
+    LoopbackLead -->|Yes| CEOAnswer2[CEO answers via 2IC]
+    CEOAnswer2 --> RunLead
+    LoopbackLead -->|No| Phase3
+
+    %% Phase 3: Eng Lead → Team Lead
+    Phase3[Team Lead: Issue Creation] --> BudgetTL{TL budget<br/>OK?}
+    BudgetTL -->|No| SavePause3([Save & Pause])
+    BudgetTL -->|Yes| RunTL[Agent creates issues]
+    RunTL --> ValidTL{Valid<br/>output?}
+    ValidTL -->|No| FailTL([Cascade failed])
+    ValidTL -->|Yes| Actions{Actions<br/>pending?}
+
+    %% Approval flow
+    Actions -->|create_issues| ApprovalMode1{Approval<br/>mode?}
+    Actions -->|invoke_cheenoski| ApprovalMode2{Approval<br/>mode?}
+    Actions -->|other| Execute
+
+    ApprovalMode1 -->|none| CreateIssues[Create GitHub issues]
+    ApprovalMode1 -->|destructive/all| WaitApproval1[Wait for CEO approval]
+    WaitApproval1 --> Approved1{Approved?}
+    Approved1 -->|Yes| CreateIssues
+    Approved1 -->|No| Rejected1([Action rejected])
+    CreateIssues --> Execute
+
+    ApprovalMode2 -->|none| StartEngineers[Start parallel engineers]
+    ApprovalMode2 -->|destructive/all| WaitApproval2[Wait for CEO approval]
+    WaitApproval2 --> Approved2{Approved?}
+    Approved2 -->|Yes| StartEngineers
+    Approved2 -->|No| Rejected2([Action rejected])
+
+    %% Phase 4: Engineers
+    StartEngineers --> Engineers[Engineers process issues]
+    Engineers --> Parallel{Parallel<br/>execution}
+    Parallel --> Eng1[Engineer #1: Issue #1]
+    Parallel --> Eng2[Engineer #2: Issue #2]
+    Parallel --> Eng3[Engineer #3: Issue #3]
+
+    Eng1 --> PR1[Create PR #1]
+    Eng2 --> PR2[Create PR #2]
+    Eng3 --> PR3[Create PR #3]
+
+    PR1 --> Complete
+    PR2 --> Complete
+    PR3 --> Complete
+    Execute --> Complete
+
+    Complete([Cascade Complete]) --> SaveState[Save session state]
+    SaveState --> Transcript[Write transcript]
+    Transcript --> Exit2([Exit/Continue])
+
+    %% Styling
+    style Start fill:#e1f5e1
+    style Complete fill:#e1f5e1
+    style Exit1 fill:#e1f5e1
+    style Exit2 fill:#e1f5e1
+    style Error fill:#ffe1e1
+    style Error2 fill:#ffe1e1
+    style BudgetFail fill:#ffe1e1
+    style Fail2IC fill:#ffe1e1
+    style FailLead fill:#ffe1e1
+    style FailTL fill:#ffe1e1
+    style Rejected1 fill:#ffe1e1
+    style Rejected2 fill:#ffe1e1
+    style TUI fill:#e1e5ff
+    style TelegramBot fill:#e1e5ff
+    style HeadlessMode fill:#e1e5ff
+    style Engineers fill:#fff4e1
+    style Parallel fill:#fff4e1
+```
+
+This diagram shows the complete flow from initial setup through cascade execution to final outcomes, including all three execution modes (TUI, headless, Telegram) and approval gates.
+
 ### The Cascade
 
 ```
@@ -235,6 +377,55 @@ Engineers (Layer 4) use [Cheenoski](https://github.com/Venin-Client-Systems/eche
 | `request_review` | Team Lead | Request PR review |
 | `request_info` | Any layer | Ask another layer a question |
 | `escalate` | Any layer | Bubble a decision to a higher layer |
+
+## Telegram Bot Mode
+
+Run Echelon as a Telegram bot for mobile-first operation:
+
+```bash
+echelon --telegram
+```
+
+Set environment variables:
+```bash
+export ECHELON_TELEGRAM_BOT_TOKEN="your-bot-token"
+export ECHELON_TELEGRAM_CHAT_ID="your-chat-id"
+export ECHELON_TELEGRAM_ALLOWED_USERS="123456789,987654321"
+```
+
+Or configure in `echelon.config.json`:
+```json
+{
+  "telegram": {
+    "token": "your-bot-token",
+    "chatId": "your-chat-id",
+    "allowedUserIds": [123456789, 987654321],
+    "health": {
+      "enabled": true,
+      "port": 3000,
+      "path": "/health"
+    }
+  }
+}
+```
+
+**Features:**
+- 📱 Send directives via Telegram chat
+- ✅ Approve/reject actions on mobile
+- 🔔 Real-time event notifications (agent status, issues created, PRs opened)
+- 🏥 Health monitoring endpoint for uptime checks
+- 🔒 User authentication (allowedUserIds)
+- 💬 Interactive commands: `/status`, `/approve`, `/cost`, `/quit`
+
+**Bot Commands:**
+- `/start` - Show welcome and available commands
+- `/status` - Current cascade state
+- `/approve` - Approve all pending actions
+- `/reject <id> <reason>` - Reject a specific action
+- `/cost` - Cost breakdown by layer
+- `/quit` - Pause cascade and shutdown
+
+The bot maintains full session context and can resume work across restarts.
 
 ## Configuration
 
