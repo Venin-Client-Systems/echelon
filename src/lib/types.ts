@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import type { CheenoskiEvent } from '../cheenoski/types.js';
+import { CheenoskiEngineConfigSchema } from '../cheenoski/types.js';
 
 // --- Config Schemas ---
 
@@ -23,11 +25,21 @@ export const ProjectConfigSchema = z.object({
   baseBranch: z.string().default('main'),
 });
 
-export const EngineersConfigSchema = z.object({
+export const EngineersConfigSchema = CheenoskiEngineConfigSchema;
+
+/** @deprecated Use EngineersConfigSchema (now powered by CheenoskiEngineConfigSchema) */
+export const LegacyEngineersConfigSchema = z.object({
   maxParallel: z.number().int().positive().default(3),
   createPr: z.boolean().default(true),
   prDraft: z.boolean().default(true),
 });
+
+export const TelegramConfigSchema = z.object({
+  botToken: z.string().min(1),
+  chatId: z.string().min(1),
+  allowedUserIds: z.array(z.string()).optional(),
+  enabled: z.boolean().default(true),
+}).optional();
 
 export const EchelonConfigSchema = z.object({
   project: ProjectConfigSchema,
@@ -39,6 +51,7 @@ export const EchelonConfigSchema = z.object({
   engineers: EngineersConfigSchema.default({}),
   approvalMode: z.enum(['destructive', 'all', 'none']).default('destructive'),
   maxTotalBudgetUsd: z.number().positive().default(50.0),
+  telegram: TelegramConfigSchema,
 });
 
 export type EchelonConfig = z.infer<typeof EchelonConfigSchema>;
@@ -75,6 +88,13 @@ export const CreateIssuesActionSchema = z.object({
   issues: z.array(IssuePayloadSchema).min(1),
 });
 
+export const InvokeCheenoskiActionSchema = z.object({
+  action: z.literal('invoke_cheenoski'),
+  label: z.string(),
+  maxParallel: z.number().int().positive().optional(),
+});
+
+/** @deprecated Use InvokeCheenoskiActionSchema */
 export const InvokeRalphyActionSchema = z.object({
   action: z.literal('invoke_ralphy'),
   label: z.string(),
@@ -113,6 +133,7 @@ export const CreateBranchActionSchema = z.object({
 
 export const ActionSchema = z.discriminatedUnion('action', [
   CreateIssuesActionSchema,
+  InvokeCheenoskiActionSchema,
   InvokeRalphyActionSchema,
   UpdatePlanActionSchema,
   RequestInfoActionSchema,
@@ -204,6 +225,7 @@ export interface CliOptions {
   dryRun: boolean;
   resume: boolean;
   verbose: boolean;
+  telegram: boolean;
   approvalMode?: EchelonConfig['approvalMode'];
 }
 
@@ -216,9 +238,10 @@ export type EchelonEvent =
   | { type: 'action_executed'; action: Action; result: string }
   | { type: 'action_rejected'; approval: PendingApproval; reason: string }
   | { type: 'issue_created'; issue: TrackedIssue }
-  | { type: 'ralphy_progress'; label: string; line: string }
+  | { type: 'cheenoski_progress'; label: string; line: string }
   | { type: 'error'; role: AgentRole; error: string }
   | { type: 'cost_update'; role: AgentRole; costUsd: number; totalUsd: number }
   | { type: 'state_saved'; path: string }
   | { type: 'cascade_complete'; directive: string }
-  | { type: 'shutdown'; reason: string };
+  | { type: 'shutdown'; reason: string }
+  | CheenoskiEvent;

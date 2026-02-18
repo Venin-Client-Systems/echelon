@@ -7,6 +7,35 @@ export type CliResult =
   | { command: 'sessions'; action: 'list' | 'prune'; }
   | { command: 'sessions'; action: 'delete'; sessionId: string };
 
+function addRunOptions(cmd: Command): Command {
+  return cmd
+    .option('-c, --config <path>', 'Path to echelon.config.json')
+    .option('-d, --directive <text>', 'CEO directive to execute')
+    .option('--headless', 'Run without TUI (headless mode)', false)
+    .option('--dry-run', 'Show planned cascade without executing', false)
+    .option('--resume', 'Resume the most recent session', false)
+    .option('-v, --verbose', 'Enable debug logging', false)
+    .option('--approval-mode <mode>', 'Override approval mode (destructive, all, none)')
+    .option('--telegram', 'Start in Telegram bot mode', false);
+}
+
+function toRunResult(cmd: Command): CliResult {
+  const opts = cmd.opts();
+  return {
+    command: 'run',
+    options: {
+      config: (opts.config ?? '') as string,
+      directive: opts.directive as string | undefined,
+      headless: opts.headless as boolean,
+      dryRun: opts.dryRun as boolean,
+      resume: opts.resume as boolean,
+      verbose: opts.verbose as boolean,
+      telegram: opts.telegram as boolean,
+      approvalMode: opts.approvalMode as 'none' | 'destructive' | 'all' | undefined,
+    },
+  };
+}
+
 export function parseArgs(argv: string[]): CliResult {
   let result: CliResult | null = null;
 
@@ -17,29 +46,16 @@ export function parseArgs(argv: string[]): CliResult {
     .description('Hierarchical multi-agent AI org orchestrator')
     .version('0.1.0');
 
-  // Default run command (when no subcommand given)
-  program
-    .option('-c, --config <path>', 'Path to echelon.config.json')
-    .option('-d, --directive <text>', 'CEO directive to execute')
-    .option('--headless', 'Run without TUI (headless mode)', false)
-    .option('--dry-run', 'Show planned cascade without executing', false)
-    .option('--resume', 'Resume the most recent session', false)
-    .option('-v, --verbose', 'Enable debug logging', false)
-    .option('--approval-mode <mode>', 'Override approval mode (destructive, all, none)')
-    .action((opts) => {
-      result = {
-        command: 'run',
-        options: {
-          config: opts.config,
-          directive: opts.directive,
-          headless: opts.headless,
-          dryRun: opts.dryRun,
-          resume: opts.resume,
-          verbose: opts.verbose,
-          approvalMode: opts.approvalMode,
-        },
-      };
-    });
+  // `run` subcommand — `echelon run -d "..." --headless`
+  // Also set as default so `echelon -d "..." --headless` works
+  const runCmd = addRunOptions(
+    program
+      .command('run', { isDefault: true })
+      .description('Run the orchestrator (default)')
+  );
+  runCmd.action(() => {
+    result = toRunResult(runCmd);
+  });
 
   // Init subcommand
   program

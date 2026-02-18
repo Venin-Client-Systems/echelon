@@ -2,7 +2,16 @@ type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 const LOG_LEVELS: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 };
 
-let minLevel = LOG_LEVELS[(process.env.LOG_LEVEL as LogLevel) || 'info'] ?? LOG_LEVELS.info;
+/** Validate and parse LOG_LEVEL env var */
+function getInitialLogLevel(): number {
+  const envLevel = process.env.LOG_LEVEL?.toLowerCase();
+  if (envLevel && envLevel in LOG_LEVELS) {
+    return LOG_LEVELS[envLevel as LogLevel];
+  }
+  return LOG_LEVELS.info;
+}
+
+let minLevel = getInitialLogLevel();
 let quiet = false;
 
 function formatMessage(level: LogLevel, msg: string, data?: Record<string, unknown>): string {

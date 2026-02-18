@@ -62,11 +62,19 @@ export function findResumableSession(repo?: string): SessionSummary | null {
     return resumable.find(s => s.repo === repo) ?? null;
   }
 
+  // When no repo specified, still return the first one (already sorted by updatedAt)
+  // This is intentional - caller should pass repo if they want filtering
   return resumable[0] ?? null;
 }
 
 /** Delete a session and its data */
 export function deleteSession(sessionId: string): boolean {
+  // Sanitize: reject path traversal attempts
+  if (sessionId.includes('..') || sessionId.includes('/') || sessionId.includes('\\')) {
+    logger.warn('Rejected invalid session ID', { session: sessionId });
+    return false;
+  }
+
   const dir = join(SESSIONS_DIR, sessionId);
   if (!existsSync(dir)) return false;
 
@@ -82,16 +90,43 @@ export function pruneCompletedSessions(): number {
   let count = 0;
 
   for (const s of sessions) {
+    const updatedTime = new Date(s.updatedAt).getTime();
+    const isRecent = updatedTime >= oneHourAgo;
+
+    // Skip recent completed/failed sessions (keep sessions < 1 hour old)
+    if (isRecent && (s.status === 'completed' || s.status === 'failed')) {
+      continue;
+    }
+
     const prunable =
       s.status === 'completed' ||
       s.status === 'failed' ||
       // Stale running sessions with no messages (crashed before producing anything)
-      (s.status === 'running' && s.messageCount === 0 && new Date(s.updatedAt).getTime() < oneHourAgo);
+      (s.status === 'running' && s.messageCount === 0 && updatedTime < oneHourAgo);
 
     if (prunable && deleteSession(s.id)) count++;
   }
 
   return count;
+}
+
+/** Recursively calculate directory size */
+function getDirSize(dirPath: string): number {
+  let size = 0;
+  try {
+    const entries = readdirSync(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = join(dirPath, entry.name);
+      try {
+        if (entry.isDirectory()) {
+          size += getDirSize(fullPath);
+        } else if (entry.isFile()) {
+          size += statSync(fullPath).size;
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* skip */ }
+  return size;
 }
 
 /** Get disk usage of sessions directory */
@@ -106,12 +141,7 @@ export function getSessionsDiskUsage(): { count: number; bytes: number } {
     try {
       const stat = statSync(fullPath);
       if (stat.isDirectory()) {
-        const files = readdirSync(fullPath);
-        for (const file of files) {
-          try {
-            bytes += statSync(join(fullPath, file)).size;
-          } catch { /* skip */ }
-        }
+        bytes += getDirSize(fullPath);
       }
     } catch { /* skip */ }
   }
