@@ -32,6 +32,51 @@ interface LogEntry {
 /** Error types for structured error logging */
 export type ErrorType = 'rate_limit' | 'timeout' | 'crash' | 'validation' | 'network' | 'quota_exceeded' | 'unknown';
 
+/** Sensitive patterns to redact from logs */
+const SENSITIVE_PATTERNS = [
+  // API keys and tokens
+  /ANTHROPIC_API_KEY[=:]\s*[^\s]+/gi,
+  /sk-ant-[a-zA-Z0-9-_]+/gi,
+  /ghp_[a-zA-Z0-9]{36,}/gi,
+  /gho_[a-zA-Z0-9]{36,}/gi,
+  /github_pat_[a-zA-Z0-9_]+/gi,
+  // Generic tokens
+  /\b[Tt]oken[=:]\s*[a-zA-Z0-9_-]{20,}/g,
+  /\b[Aa]pi[Kk]ey[=:]\s*[a-zA-Z0-9_-]{20,}/g,
+  // Authorization headers
+  /[Aa]uthorization:\s*Bearer\s+[a-zA-Z0-9_-]+/g,
+];
+
+/** Sanitize potentially sensitive data from log messages and data objects */
+function sanitizeForLog(input: string | Record<string, unknown>): string | Record<string, unknown> {
+  if (typeof input === 'string') {
+    let sanitized = input;
+    for (const pattern of SENSITIVE_PATTERNS) {
+      sanitized = sanitized.replace(pattern, '[REDACTED]');
+    }
+    return sanitized;
+  }
+
+  if (typeof input === 'object' && input !== null) {
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(input)) {
+      // Redact keys that likely contain sensitive data
+      if (/api[_-]?key|token|secret|password|credential/i.test(key)) {
+        sanitized[key] = '[REDACTED]';
+      } else if (typeof value === 'string') {
+        sanitized[key] = sanitizeForLog(value);
+      } else if (typeof value === 'object' && value !== null) {
+        sanitized[key] = sanitizeForLog(value as Record<string, unknown>);
+      } else {
+        sanitized[key] = value;
+      }
+    }
+    return sanitized;
+  }
+
+  return input;
+}
+
 /** Validate and parse LOG_LEVEL env var */
 function getInitialLogLevel(): number {
   const envLevel = process.env.LOG_LEVEL?.toLowerCase();
@@ -65,8 +110,13 @@ function formatText(level: LogLevel, msg: string, context?: LogContext, data?: R
     if (parts.length > 0) contextStr = `[${parts.join('|')}] `;
   }
 
-  if (data) return `${prefix} ${contextStr}${msg} ${JSON.stringify(data)}`;
-  return `${prefix} ${contextStr}${msg}`;
+  // Sanitize message and data
+  const sanitizedMsg = sanitizeForLog(msg) as string;
+  if (data) {
+    const sanitizedData = sanitizeForLog(data) as Record<string, unknown>;
+    return `${prefix} ${contextStr}${sanitizedMsg} ${JSON.stringify(sanitizedData)}`;
+  }
+  return `${prefix} ${contextStr}${sanitizedMsg}`;
 }
 
 /** Format log entry as JSON */
@@ -74,16 +124,17 @@ function formatJson(level: LogLevel, msg: string, context?: LogContext, data?: R
   const entry: LogEntry = {
     timestamp: new Date().toISOString(),
     level,
-    message: msg,
+    message: sanitizeForLog(msg) as string,
   };
 
   if (context) {
     entry.context = context;
   }
 
-  // Merge additional data into the entry
+  // Merge additional data into the entry (sanitized)
   if (data) {
-    Object.assign(entry, data);
+    const sanitizedData = sanitizeForLog(data) as Record<string, unknown>;
+    Object.assign(entry, sanitizedData);
   }
 
   return JSON.stringify(entry);

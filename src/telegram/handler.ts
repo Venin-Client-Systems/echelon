@@ -7,6 +7,19 @@ import { loadHistory, saveHistory } from './history.js';
 import type { StoredMessage } from './history.js';
 import { sendTelegramMessage } from './bot.js';
 
+/** Sanitize error messages to prevent credential leakage */
+function sanitizeError(msg: string): string {
+  return msg
+    .replace(/ANTHROPIC_API_KEY[=:]\s*[^\s]+/gi, 'ANTHROPIC_API_KEY=[REDACTED]')
+    .replace(/sk-ant-[a-zA-Z0-9-_]+/gi, '[REDACTED]')
+    .replace(/ghp_[a-zA-Z0-9]{36,}/gi, '[REDACTED]')
+    .replace(/gho_[a-zA-Z0-9]{36,}/gi, '[REDACTED]')
+    .replace(/github_pat_[a-zA-Z0-9_]+/gi, '[REDACTED]')
+    .replace(/[Tt]oken[=:]\s*[a-zA-Z0-9_-]{20,}/g, 'Token=[REDACTED]')
+    .replace(/[Aa]pi[Kk]ey[=:]\s*[a-zA-Z0-9_-]{20,}/g, 'ApiKey=[REDACTED]')
+    .replace(/[Aa]uthorization:\s*Bearer\s+[a-zA-Z0-9_-]+/g, 'Authorization: Bearer [REDACTED]');
+}
+
 let _client: Anthropic | null = null;
 
 function getClient(): Anthropic {
@@ -151,7 +164,7 @@ export async function handleMessage(text: string, config: EchelonConfig): Promis
     ]);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`Claude API error: ${msg}`);
+    throw new Error(`Claude API error: ${sanitizeError(msg)}`);
   }
 
   let finalText = '';
@@ -218,7 +231,7 @@ export async function handleMessage(text: string, config: EchelonConfig): Promis
       ]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`Claude API error: ${msg}`);
+      throw new Error(`Claude API error: ${sanitizeError(msg)}`);
     }
   }
 
