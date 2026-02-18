@@ -32,7 +32,8 @@ export function worktreePath(repoPath: string, branchName: string): string {
   // Sanitize both repoName and branchName to prevent path traversal
   const safeRepoName = repoName.replace(/[^a-zA-Z0-9_-]/g, '-');
   const safeBranchName = branchName.replace(/[^a-zA-Z0-9_-]/g, '-');
-  return join(tmpdir(), 'cheenoski-worktrees', `${safeRepoName}-${safeBranchName}`);
+  // Include PID to prevent path collisions between parallel runs of same repo
+  return join(tmpdir(), 'cheenoski-worktrees', `${safeRepoName}-${process.pid}-${safeBranchName}`);
 }
 
 /**
