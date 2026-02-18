@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { FeedEntry } from './hooks/useEchelon.js';
+import { formatRelativeTime } from '../lib/time.js';
 
 interface FeedProps {
   entries: FeedEntry[];
@@ -24,7 +25,7 @@ export function Feed({ entries, maxLines = 20 }: FeedProps) {
       ) : (
         visible.map(entry => (
           <Box key={entry.id} flexWrap="wrap">
-            <Text dimColor>{entry.timestamp} </Text>
+            <Text dimColor>{formatRelativeTime(entry.timestamp)} </Text>
             <Text color={entry.color} bold>[{entry.source}] </Text>
             <Text wrap="truncate-end">{entry.text}</Text>
           </Box>

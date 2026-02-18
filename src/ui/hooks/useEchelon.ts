@@ -4,6 +4,7 @@ import type {
   PendingApproval, TrackedIssue, LayerMessage,
 } from '../../lib/types.js';
 import { LAYER_ORDER, LAYER_LABELS } from '../../lib/types.js';
+import { formatRelativeTime } from '../../lib/time.js';
 import type { Orchestrator } from '../../core/orchestrator.js';
 
 export interface FeedEntry {
@@ -73,7 +74,7 @@ export function useEchelon(orchestrator: Orchestrator): EchelonUI {
   const addFeedEntry = useCallback((source: string, text: string, color: string) => {
     const entry: FeedEntry = {
       id: String(++feedCounterRef.current),
-      timestamp: new Date().toISOString().slice(11, 19),
+      timestamp: new Date().toISOString(),
       source,
       text,
       color,
