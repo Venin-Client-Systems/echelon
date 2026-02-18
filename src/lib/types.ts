@@ -55,6 +55,7 @@ export const EchelonConfigSchema = z.object({
   engineers: EngineersConfigSchema.default({}),
   approvalMode: z.enum(['destructive', 'all', 'none']).default('destructive'),
   maxTotalBudgetUsd: z.number().positive().default(50.0),
+  maxCascadeDurationMs: z.number().positive().default(1_800_000),
   telegram: TelegramConfigSchema.optional(),
   billing: z.enum(['api', 'max']).default('api'),
 });

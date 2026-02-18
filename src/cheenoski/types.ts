@@ -147,6 +147,7 @@ export const CheenoskiEngineConfigSchema = z.object({
     stuckWarningMs: z.number().positive().default(120_000),
     hardTimeoutMs: z.number().positive().default(600_000),
     maxRetries: z.number().int().min(0).default(2),
+    maxSlotDurationMs: z.number().positive().default(600_000),
 });
 
 export type CheenoskiEngineConfig = z.infer<typeof CheenoskiEngineConfigSchema>;
