@@ -1,5 +1,8 @@
 import { Command } from 'commander';
 import type { CliOptions } from './lib/types.js';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
 export type CliResult =
   | { command: 'run'; options: CliOptions }
@@ -39,12 +42,17 @@ function toRunResult(cmd: Command): CliResult {
 export function parseArgs(argv: string[]): CliResult {
   let result: CliResult | null = null;
 
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const packageJson = JSON.parse(
+    readFileSync(join(__dirname, '../package.json'), 'utf-8')
+  );
+
   const program = new Command();
 
   program
     .name('echelon')
     .description('Hierarchical multi-agent AI org orchestrator')
-    .version('0.1.0');
+    .version(packageJson.version);
 
   // `run` subcommand — `echelon run -d "..." --headless`
   // Also set as default so `echelon -d "..." --headless` works

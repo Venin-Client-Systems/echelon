@@ -18,5 +18,5 @@
     "noEmit": false
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["node_modules", "dist", "ralphy"]
+  "exclude": ["node_modules", "dist", "ralphy", "src/**/*.test.ts", "src/**/__tests__"]
 }

@@ -12,7 +12,7 @@ import { MessageBus } from './message-bus.js';
 import { parseActions, stripActionBlocks } from './action-parser.js';
 import { ActionExecutor } from './action-executor.js';
 import { createState, saveState, loadState, updateAgentStatus } from './state.js';
-import { withRetry, checkLayerBudget, checkTotalBudget, budgetSummary } from './recovery.js';
+import { checkLayerBudget, checkTotalBudget, budgetSummary } from './recovery.js';
 
 interface OrchestratorOptions {
   config: EchelonConfig;
@@ -224,24 +224,26 @@ export class Orchestrator {
     try {
       const systemPrompt = buildSystemPrompt(role, this.config);
       const maxTurns = layerConfig.maxTurns ?? DEFAULT_MAX_TURNS[layerConfig.model] ?? 8;
-      const response = await withRetry(
-        () => agentState.sessionId
-          ? resumeAgent(agentState.sessionId, input, {
-              maxTurns,
-              timeoutMs: layerConfig.timeoutMs,
-              cwd: this.config.project.path,
-              maxBudgetUsd: layerConfig.maxBudgetUsd - agentState.totalCost,
-            })
-          : spawnAgent(input, {
-              model: layerConfig.model,
-              maxBudgetUsd: layerConfig.maxBudgetUsd - agentState.totalCost,
-              systemPrompt,
-              maxTurns,
-              timeoutMs: layerConfig.timeoutMs,
-              cwd: this.config.project.path,
-            }),
-        `${LAYER_LABELS[role]} agent call`,
-      );
+
+      // Agent spawn/resume now has built-in error boundaries with:
+      // - Error classification (rate limit, timeout, crash, quota)
+      // - Exponential backoff with jitter
+      // - Circuit breaker (opens after 5 consecutive failures)
+      const response = agentState.sessionId
+        ? await resumeAgent(agentState.sessionId, input, {
+            maxTurns,
+            timeoutMs: layerConfig.timeoutMs,
+            cwd: this.config.project.path,
+            maxBudgetUsd: layerConfig.maxBudgetUsd - agentState.totalCost,
+          })
+        : await spawnAgent(input, {
+            model: layerConfig.model,
+            maxBudgetUsd: layerConfig.maxBudgetUsd - agentState.totalCost,
+            systemPrompt,
+            maxTurns,
+            timeoutMs: layerConfig.timeoutMs,
+            cwd: this.config.project.path,
+          });
 
       // Update agent state
       agentState.sessionId = response.sessionId;

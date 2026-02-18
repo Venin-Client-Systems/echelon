@@ -25,20 +25,20 @@ export function createTelegramBot(config: EchelonConfig): Bot {
   const tgConfig = config.telegram;
   if (!tgConfig) {
     throw new Error(
-      'Telegram config not found. Set telegram.botToken and telegram.chatId in echelon.config.json',
+      'Telegram config not found. Set telegram.token in echelon.config.json',
     );
   }
-  const botToken = process.env.ECHELON_TELEGRAM_BOT_TOKEN || tgConfig.botToken;
-  const chatId = process.env.ECHELON_TELEGRAM_CHAT_ID || tgConfig.chatId;
-  if (!botToken || !chatId) {
-    throw new Error('Missing ECHELON_TELEGRAM_BOT_TOKEN or ECHELON_TELEGRAM_CHAT_ID');
+  const botToken = process.env.ECHELON_TELEGRAM_BOT_TOKEN || tgConfig.token;
+  const chatId = process.env.ECHELON_TELEGRAM_CHAT_ID || '';
+  if (!botToken) {
+    throw new Error('Missing telegram.token or ECHELON_TELEGRAM_BOT_TOKEN');
   }
   _chatId = chatId;
   _bot = new Bot(botToken);
 
   // Auth middleware — verify chat ID and user ID
-  const allowedUserIds = process.env.ECHELON_TELEGRAM_ALLOWED_USERS?.split(',').map(s => s.trim())
-    ?? tgConfig.allowedUserIds
+  const allowedUserIds: string[] = process.env.ECHELON_TELEGRAM_ALLOWED_USERS?.split(',').map(s => s.trim())
+    ?? tgConfig.allowedUserIds.map(String)
     ?? [];
 
   _bot.use(async (ctx, next) => {
@@ -242,8 +242,8 @@ async function processQueue(config: EchelonConfig): Promise<void> {
 
 /** Start the bot polling loop */
 export async function startBot(config: EchelonConfig): Promise<void> {
-  if (!config.telegram?.enabled) {
-    throw new Error('Telegram is not enabled in config. Set telegram.enabled: true');
+  if (!config.telegram) {
+    throw new Error('Telegram is not configured. Add a telegram section to echelon.config.json');
   }
 
   const bot = createTelegramBot(config);
