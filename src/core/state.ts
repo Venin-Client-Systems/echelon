@@ -60,6 +60,19 @@ export function saveState(state: EchelonState): void {
 
   try {
     state.updatedAt = new Date().toISOString();
+
+    // Trim messages to prevent unbounded growth (match MessageBus MAX_HISTORY = 10)
+    // Agents get fresh prompts via buildDownwardPrompt(), not full message history
+    if (state.messages.length > 10) {
+      const removed = state.messages.length - 10;
+      state.messages = state.messages.slice(-10);
+      logger.debug('Trimmed message history before save', {
+        removed,
+        kept: 10,
+        session: state.sessionId,
+      });
+    }
+
     const dir = sessionDir(state.sessionId);
     ensureDir(dir);
     const path = join(dir, 'state.json');

@@ -104,7 +104,28 @@ export async function runWithFallback(
     }
 
     onEngineCreated?.(engine);
-    const result = await engine.run(opts);
+
+    // Wrap engine.run() in try/catch to handle unexpected exceptions
+    // Engines should return result objects, but if they throw, treat as crash
+    let result: EngineResult;
+    try {
+      result = await engine.run(opts);
+    } catch (runErr) {
+      const errMsg = runErr instanceof Error ? runErr.message : String(runErr);
+      logger.error(`${engineName} engine threw exception (treating as crash): ${errMsg}`);
+
+      // Convert exception to result object
+      result = {
+        success: false,
+        output: `Engine threw exception: ${errMsg}`,
+        toolsUsed: [],
+        filesChanged: [],
+        durationMs: 0,
+        engineName,
+        errorType: 'crash',
+        rawExitCode: null,
+      };
+    }
 
     if (result.errorType === 'rate_limit') {
       recordRateLimit(engineName);

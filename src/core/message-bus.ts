@@ -101,7 +101,7 @@ export class MessageBus extends EventEmitter {
    * Route a message between layers with adjacency enforcement.
    *
    * Messages are added to history and emitted as events. The history is capped
-   * at MAX_HISTORY (1000 messages) to prevent memory blowout.
+   * at MAX_HISTORY (10 messages) to prevent memory blowout.
    *
    * @param msg - The layer message to route
    * @throws {Error} If from and to are not adjacent roles
