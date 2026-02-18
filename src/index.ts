@@ -83,6 +83,12 @@ async function runOrchestrator(opts: CliResult & { command: 'run' }): Promise<vo
     (config as { approvalMode: string }).approvalMode = cliOpts.approvalMode;
   }
 
+  // YOLO mode — override approval mode and warn
+  if (cliOpts.yolo) {
+    (config as { approvalMode: string }).approvalMode = 'none';
+    logger.warn('YOLO mode — all actions auto-approved, agents run with full permissions');
+  }
+
   // Resume or create new
   let state;
   if (cliOpts.resume) {
