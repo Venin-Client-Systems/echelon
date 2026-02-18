@@ -616,7 +616,7 @@ export class Orchestrator {
     const ROLE_ALLOWED_ACTIONS: Record<LayerId, Set<string>> = {
       '2ic': new Set(['update_plan', 'request_info', 'escalate']),
       'eng-lead': new Set(['update_plan', 'create_branch', 'request_info', 'escalate']),
-      'team-lead': new Set(['create_issues', 'invoke_cheenoski', 'invoke_ralphy', 'request_info', 'request_review']),
+      'team-lead': new Set(['create_issues', 'invoke_cheenoski', 'request_info', 'request_review']),
     };
 
     const allowed = ROLE_ALLOWED_ACTIONS[role];
