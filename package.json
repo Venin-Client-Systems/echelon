@@ -32,7 +32,8 @@
     "test:watch": "vitest --watch",
     "test:vitest": "vitest",
     "test:node-only": "tsx --test src/core/__tests__/error-boundaries.test.ts src/lib/__tests__/config.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "docs:api": "typedoc"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.76.0",
@@ -47,6 +48,7 @@
     "@types/node": "^22.13.4",
     "@types/react": "^18.3.18",
     "tsx": "^4.19.3",
+    "typedoc": "^0.28.17",
     "typescript": "^5.7.3",
     "vitest": "^4.0.18"
   },
