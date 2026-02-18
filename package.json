@@ -8,15 +8,29 @@
     "type": "git",
     "url": "https://github.com/Venin-Client-Systems/echelon.git"
   },
-  "keywords": ["ai", "orchestrator", "multi-agent", "claude", "cli"],
-  "files": ["dist", "ralphy", "README.md", "LICENSE"],
+  "keywords": [
+    "ai",
+    "orchestrator",
+    "multi-agent",
+    "claude",
+    "cli"
+  ],
+  "files": [
+    "dist",
+    "ralphy",
+    "README.md",
+    "LICENSE"
+  ],
   "bin": {
     "echelon": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc && node -e \"const fs=require('fs');const f='dist/index.js';let s=fs.readFileSync(f,'utf8');if(s.startsWith('#!'))s=s.slice(s.indexOf('\\n')+1);fs.writeFileSync(f,'#!/usr/bin/env node\\n'+s);fs.chmodSync(f,0o755)\"",
     "dev": "tsx src/index.ts",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "vitest run && npm run test:node-only",
+    "test:watch": "vitest --watch",
+    "test:vitest": "vitest",
+    "test:node-only": "tsx --test src/core/__tests__/error-boundaries.test.ts src/lib/__tests__/config.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -30,7 +44,8 @@
     "@types/node": "^22.13.4",
     "@types/react": "^18.3.18",
     "tsx": "^4.19.3",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^4.0.18"
   },
   "engines": {
     "node": ">=20"
