@@ -37,9 +37,24 @@ async function ensureLabels(labels: string[], repo: string): Promise<void> {
   }
 }
 
+/** Fetch open issue titles from the repo to avoid creating duplicates */
+async function fetchOpenIssueTitles(repo: string): Promise<Set<string>> {
+  try {
+    const { stdout } = await execFileAsync('gh', [
+      'issue', 'list', '--repo', repo, '--state', 'open',
+      '--limit', '200', '--json', 'title',
+    ], { encoding: 'utf-8' });
+    const raw = JSON.parse(stdout) as { title: string }[];
+    return new Set(raw.map(i => i.title.toLowerCase().trim()));
+  } catch {
+    return new Set();
+  }
+}
+
 /**
  * Create GitHub issues via the `gh` CLI.
  * Returns an array of successfully created issues with their numbers.
+ * Skips issues whose titles match existing open issues (deduplication).
  * Continues creating remaining issues even if one fails.
  */
 export async function createIssues(
@@ -49,6 +64,9 @@ export async function createIssues(
   if (!isValidRepo(repo)) {
     throw new Error(`Invalid repo format: "${repo}". Expected owner/repo`);
   }
+
+  // Fetch existing open issues for deduplication
+  const existingTitles = await fetchOpenIssueTitles(repo);
 
   // Collect all unique labels and ensure they exist
   const allLabels = new Set<string>();
@@ -73,6 +91,12 @@ export async function createIssues(
 
       if (!title.trim()) {
         logger.warn('Skipping issue with empty title');
+        continue;
+      }
+
+      // Dedup: skip if an open issue with the same title already exists
+      if (existingTitles.has(title.toLowerCase().trim())) {
+        logger.info(`Skipping duplicate issue: ${title}`);
         continue;
       }
 
