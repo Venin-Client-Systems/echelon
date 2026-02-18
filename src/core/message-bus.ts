@@ -29,7 +29,9 @@ import { LAYER_ORDER } from '../lib/types.js';
  */
 export class MessageBus extends EventEmitter {
   private history: LayerMessage[] = [];
-  private readonly MAX_HISTORY = 1000; // Cap history to prevent memory blowout
+  // Cap history at 10 messages — only used for recent context, not agent prompts
+  // Agents get fresh prompts via buildDownwardPrompt(), not full message history
+  private readonly MAX_HISTORY = 10;
 
   constructor() {
     super();
