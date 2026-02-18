@@ -377,8 +377,8 @@ export class Orchestrator {
         totalUsd: this.state.totalCost,
       });
 
-      // Parse actions from response
-      const { actions, errors } = parseActions(response.content);
+      // Parse actions from response (also extracts narrative in one pass)
+      const { actions, narrative, errors } = parseActions(response.content);
       if (errors.length > 0) {
         layerLogger.warn(`${LAYER_LABELS[role]} had action parse errors`, { errors });
       }
@@ -386,7 +386,7 @@ export class Orchestrator {
       // Determine message target (next layer down or same layer for info requests)
       const target = this.getDownstreamRole(role);
 
-      // Build layer message
+      // Build layer message (store full content for history, use narrative for logging)
       const msg: LayerMessage = {
         id: nanoid(12),
         from: role,
@@ -413,8 +413,7 @@ export class Orchestrator {
       updateAgentStatus(this.state, role, 'done');
       this.bus.emitEchelon({ type: 'agent_status', role, status: 'done' });
 
-      // Log summary
-      const narrative = stripActionBlocks(response.content);
+      // Log summary (narrative was already extracted during parseActions)
       layerLogger.info(`[${LAYER_LABELS[role]}] ${narrative.slice(0, 150)}...`, {
         cost: `$${response.costUsd.toFixed(4)}`,
         duration: `${(response.durationMs / 1000).toFixed(1)}s`,
@@ -582,7 +581,9 @@ export class Orchestrator {
       const answerMsg = await this.runLayer(targetRole, requestingRole, questionPrompt);
       if (this.shuttingDown || !answerMsg) return null;
 
-      answers.push(stripActionBlocks(answerMsg.content));
+      // Extract narrative (runLayer already parsed actions, we just need text without blocks)
+      const { narrative: answerNarrative } = parseActions(answerMsg.content);
+      answers.push(answerNarrative);
     }
 
     if (answers.length === 0) return msg;
