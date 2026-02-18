@@ -146,36 +146,36 @@ The Cheenoski scheduler manages parallel code execution slots:
 stateDiagram-v2
     [*] --> Pending: Issue Added to Queue
 
-    Pending --> Running: Slot Available<br/>+ Domain Compatible
+    Pending --> Running: Slot Available & Domain Compatible
     Pending --> Blocked: Loop Detected
-    Pending --> Skipped: Already In Progress<br/>(Assigned/WIP)
+    Pending --> Skipped: Already In Progress (Assigned/WIP)
 
-    Running --> Running: Engine Executing<br/>(within timeout)
-    Running --> StuckWarning: Elapsed > stuckWarningMs<br/>(120s default)
+    Running --> Running: Engine Executing (within timeout)
+    Running --> StuckWarning: Elapsed > stuckWarningMs (120s default)
     StuckWarning --> Running: Still Progressing
-    StuckWarning --> Killed: Elapsed > maxSlotDurationMs<br/>(600s default)
+    StuckWarning --> Killed: Elapsed > maxSlotDurationMs (600s default)
 
     Running --> Merging: Success + Changes Detected
-    Running --> Retry: Engine Failed<br/>(attempt < maxRetries)
-    Running --> Failed: Engine Failed<br/>(max retries exhausted)
-    Running --> Failed: Rate Limited<br/>(all engines exhausted)
-    Running --> Retry: No Changes Detected<br/>(stuck result)
+    Running --> Retry: Engine Failed (attempt < maxRetries)
+    Running --> Failed: Engine Failed (max retries exhausted)
+    Running --> Failed: Rate Limited (all engines exhausted)
+    Running --> Retry: No Changes Detected (stuck result)
 
     Killed --> Retry: attempt < maxRetries
     Killed --> Failed: max retries exhausted
 
     Retry --> Pending: Cleanup Worktree
 
-    Merging --> PRCreation: Merge Success<br/>+ createPr: true
-    Merging --> Done: Merge Success<br/>+ createPr: false
-    Merging --> Retry: Merge Failed<br/>(attempt < maxRetries)
-    Merging --> Failed: Merge Failed<br/>(max retries exhausted)
+    Merging --> PRCreation: Merge Success & createPr=true
+    Merging --> Done: Merge Success & createPr=false
+    Merging --> Retry: Merge Failed (attempt < maxRetries)
+    Merging --> Failed: Merge Failed (max retries exhausted)
 
     PRCreation --> Done: PR Created
-    PRCreation --> Done: PR Failed<br/>(issue still closed)
+    PRCreation --> Done: PR Failed (issue still closed)
 
-    Done --> [*]: Issue Closed<br/>+ Lessons Merged
-    Failed --> [*]: Issue Commented<br/>+ Worktree Cleaned
+    Done --> [*]: Issue Closed & Lessons Merged
+    Failed --> [*]: Issue Commented & Worktree Cleaned
     Blocked --> [*]: Issue Blocked
     Skipped --> [*]: Issue Skipped
 
@@ -235,12 +235,12 @@ Agent errors trigger cascading failure handling:
 ```mermaid
 graph TD
     Error[Agent Error] --> Classify{Error Type}
-    Classify -->|Rate Limit| Backoff[Exponential Backoff<br/>+ Retry]
-    Classify -->|Timeout| Circuit{Circuit<br/>Breaker?}
+    Classify -->|Rate Limit| Backoff[Exponential Backoff + Retry]
+    Classify -->|Timeout| Circuit{Circuit Breaker?}
     Classify -->|Crash| LogStack[Log Stack Trace]
     Classify -->|Quota| Stop([Abort Cascade])
 
-    Circuit -->|Open<br/>(5+ failures)| Stop
+    Circuit -->|Open: 5+ failures| Stop
     Circuit -->|Closed| Backoff
 
     LogStack --> MarkFailed[Mark Agent as 'error']
@@ -248,7 +248,7 @@ graph TD
     SaveState --> EmitError[Emit 'error' event]
     EmitError --> Abort([Cascade Failed])
 
-    Backoff --> Retry{Retry<br/>Successful?}
+    Backoff --> Retry{Retry Successful?}
     Retry -->|Yes| Continue([Continue Cascade])
     Retry -->|No| LogStack
 
