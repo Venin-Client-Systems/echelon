@@ -238,8 +238,9 @@ export class Orchestrator {
       this.transcript.appendMessage(msg);
       saveState(this.state);
 
-      // Execute actions
-      for (const action of actions) {
+      // Execute actions — filter by role permissions
+      const allowedActions = this.filterActionsByRole(actions, role);
+      for (const action of allowedActions) {
         await this.executor.executeOrQueue(action, role, this.dryRun);
       }
 
@@ -375,6 +376,24 @@ export class Orchestrator {
 
     // Recursively resolve if new questions were asked (up to MAX_LOOPBACK_ROUNDS)
     return this.resolveInfoRequests(updatedMsg, requestingRole, round + 1);
+  }
+
+  /** Filter actions to only those allowed for a given role */
+  private filterActionsByRole(actions: Action[], role: LayerId): Action[] {
+    const ROLE_ALLOWED_ACTIONS: Record<LayerId, Set<string>> = {
+      '2ic': new Set(['update_plan', 'request_info', 'escalate']),
+      'eng-lead': new Set(['update_plan', 'create_branch', 'request_info', 'escalate']),
+      'team-lead': new Set(['create_issues', 'invoke_cheenoski', 'invoke_ralphy', 'request_info', 'request_review']),
+    };
+
+    const allowed = ROLE_ALLOWED_ACTIONS[role];
+    if (!allowed) return actions;
+
+    return actions.filter((action) => {
+      if (allowed.has(action.action)) return true;
+      logger.warn(`Dropping "${action.action}" from ${LAYER_LABELS[role]} — not in allowed actions for this role`);
+      return false;
+    });
   }
 
   /** Get the downstream role for a given layer */

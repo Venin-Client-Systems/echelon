@@ -27,14 +27,24 @@ export async function mergeBranch(
   baseBranch: string,
   issueNumber: number,
 ): Promise<MergeResult> {
-  // 1. Verify the feature branch is a descendant of base branch
+  // 1. Ensure the feature branch is a descendant of base branch.
+  //    If base has advanced (e.g. another parallel merge landed), rebase
+  //    the feature branch onto the current base so the merge is clean.
   try {
     await git(['merge-base', '--is-ancestor', baseBranch, featureBranch], repoPath);
   } catch {
-    return {
-      success: false,
-      error: `${featureBranch} is not a descendant of ${baseBranch} — possible rebase needed`,
-    };
+    logger.info(`${featureBranch} diverged from ${baseBranch} — rebasing before merge`);
+    try {
+      await git(['rebase', baseBranch, featureBranch], repoPath);
+    } catch (rebaseErr) {
+      // Rebase conflict — abort and report failure
+      try { await git(['rebase', '--abort'], repoPath); } catch { /* best effort */ }
+      const rbMsg = rebaseErr instanceof Error ? rebaseErr.message : String(rebaseErr);
+      return {
+        success: false,
+        error: `Rebase conflict rebasing ${featureBranch} onto ${baseBranch}: ${rbMsg}`,
+      };
+    }
   }
 
   // 2. Check if feature branch has any commits beyond base

@@ -478,8 +478,12 @@ export class Scheduler {
       if (slot.status !== 'running' || !slot.startedAt) continue;
 
       const elapsed = Date.now() - new Date(slot.startedAt).getTime();
-      if (elapsed > stuckWarningMs && elapsed < stuckWarningMs + 2000) {
-        logger.warn(`Slot #${slot.issueNumber} running for ${(elapsed / 1000).toFixed(0)}s — may be stuck`);
+      // Warn once at threshold and then every 60s after
+      if (elapsed > stuckWarningMs) {
+        const sinceThreshold = elapsed - stuckWarningMs;
+        if (sinceThreshold < 1000 || (sinceThreshold % 60_000 < 1000)) {
+          logger.warn(`Slot #${slot.issueNumber} running for ${(elapsed / 1000).toFixed(0)}s — may be stuck`);
+        }
       }
     }
 
