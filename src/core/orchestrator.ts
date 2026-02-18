@@ -29,12 +29,14 @@ export class Orchestrator {
   private shuttingDown = false;
   private cascadeRunning = false;
   private readonly dryRun: boolean;
+  private readonly yolo: boolean;
   private signalHandlersInstalled = false;
   private readonly boundShutdown = () => this.shutdown();
 
   constructor(opts: OrchestratorOptions) {
     this.config = opts.config;
     this.dryRun = opts.cliOptions.dryRun;
+    this.yolo = opts.cliOptions.yolo ?? false;
     this.bus = new MessageBus();
 
     // Create or restore state
@@ -177,10 +179,13 @@ export class Orchestrator {
       saveState(this.state);
       this.bus.emitEchelon({ type: 'cascade_complete', directive });
 
+      const costLabel = this.config.billing === 'max'
+        ? `$${this.state.totalCost.toFixed(2)} (estimated)`
+        : `$${this.state.totalCost.toFixed(2)}`;
       logger.info('Cascade complete', {
         messages: this.state.messages.length,
         issues: this.state.issues.length,
-        cost: `$${this.state.totalCost.toFixed(2)}`,
+        cost: costLabel,
         pending: this.executor.getPending().length,
       });
       logger.info(`Budget: ${budgetSummary(this.state, this.config)}`);
@@ -200,22 +205,23 @@ export class Orchestrator {
     const layerConfig = this.config.layers[role];
     const agentState = this.state.agents[role];
 
-    // Budget check
-    if (agentState.totalCost >= layerConfig.maxBudgetUsd) {
-      logger.warn(`${LAYER_LABELS[role]} budget exceeded`, {
-        spent: agentState.totalCost,
-        limit: layerConfig.maxBudgetUsd,
-      });
-      return null;
-    }
+    // Budget checks (skipped when billing is 'max' — costs are not real)
+    if (this.config.billing !== 'max') {
+      if (agentState.totalCost >= layerConfig.maxBudgetUsd) {
+        logger.warn(`${LAYER_LABELS[role]} budget exceeded`, {
+          spent: agentState.totalCost,
+          limit: layerConfig.maxBudgetUsd,
+        });
+        return null;
+      }
 
-    // Total budget check
-    if (this.state.totalCost >= this.config.maxTotalBudgetUsd) {
-      logger.warn('Total budget exceeded', {
-        spent: this.state.totalCost,
-        limit: this.config.maxTotalBudgetUsd,
-      });
-      return null;
+      if (this.state.totalCost >= this.config.maxTotalBudgetUsd) {
+        logger.warn('Total budget exceeded', {
+          spent: this.state.totalCost,
+          limit: this.config.maxTotalBudgetUsd,
+        });
+        return null;
+      }
     }
 
     updateAgentStatus(this.state, role, 'thinking');
@@ -235,6 +241,7 @@ export class Orchestrator {
             timeoutMs: layerConfig.timeoutMs,
             cwd: this.config.project.path,
             maxBudgetUsd: layerConfig.maxBudgetUsd - agentState.totalCost,
+            yolo: this.yolo,
           })
         : await spawnAgent(input, {
             model: layerConfig.model,
@@ -243,6 +250,7 @@ export class Orchestrator {
             maxTurns,
             timeoutMs: layerConfig.timeoutMs,
             cwd: this.config.project.path,
+            yolo: this.yolo,
           });
 
       // Update agent state
@@ -497,18 +505,20 @@ export class Orchestrator {
 
   /** Print dry-run information */
   private printDryRun(directive: string): void {
+    const isMax = this.config.billing === 'max';
+    const fmtBudget = (usd: number) => isMax ? '\u221e (Max plan)' : `$${usd}`;
     console.log('\n=== DRY RUN ===\n');
     console.log(`Project: ${this.config.project.repo}`);
     console.log(`Directive: ${directive}`);
     console.log(`Approval Mode: ${this.config.approvalMode}`);
-    console.log(`Max Budget: $${this.config.maxTotalBudgetUsd}`);
+    console.log(`Max Budget: ${fmtBudget(this.config.maxTotalBudgetUsd)}`);
     console.log('\nCascade Plan:');
     console.log('  1. CEO → 2IC: Strategy breakdown');
-    console.log(`     Model: ${this.config.layers['2ic'].model}, Budget: $${this.config.layers['2ic'].maxBudgetUsd}`);
+    console.log(`     Model: ${this.config.layers['2ic'].model}, Budget: ${fmtBudget(this.config.layers['2ic'].maxBudgetUsd)}`);
     console.log('  2. 2IC → Eng Lead: Technical design');
-    console.log(`     Model: ${this.config.layers['eng-lead'].model}, Budget: $${this.config.layers['eng-lead'].maxBudgetUsd}`);
+    console.log(`     Model: ${this.config.layers['eng-lead'].model}, Budget: ${fmtBudget(this.config.layers['eng-lead'].maxBudgetUsd)}`);
     console.log('  3. Eng Lead → Team Lead: Issue creation + execution');
-    console.log(`     Model: ${this.config.layers['team-lead'].model}, Budget: $${this.config.layers['team-lead'].maxBudgetUsd}`);
+    console.log(`     Model: ${this.config.layers['team-lead'].model}, Budget: ${fmtBudget(this.config.layers['team-lead'].maxBudgetUsd)}`);
     console.log(`  4. Team Lead → Engineers: Cheenoski (max ${this.config.engineers.maxParallel} parallel)`);
     console.log('\n=== END DRY RUN ===\n');
   }

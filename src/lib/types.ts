@@ -56,6 +56,7 @@ export const EchelonConfigSchema = z.object({
   approvalMode: z.enum(['destructive', 'all', 'none']).default('destructive'),
   maxTotalBudgetUsd: z.number().positive().default(50.0),
   telegram: TelegramConfigSchema.optional(),
+  billing: z.enum(['api', 'max']).default('api'),
 });
 
 export type EchelonConfig = z.infer<typeof EchelonConfigSchema>;
@@ -233,6 +234,7 @@ export interface CliOptions {
   verbose: boolean;
   telegram: boolean;
   approvalMode?: EchelonConfig['approvalMode'];
+  yolo: boolean;
 }
 
 // --- Events ---

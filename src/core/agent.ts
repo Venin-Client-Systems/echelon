@@ -34,6 +34,7 @@ export interface SpawnOptions {
   maxTurns?: number;
   timeoutMs?: number;
   cwd?: string;
+  yolo?: boolean;
 }
 
 export interface AgentResponse {
@@ -155,6 +156,10 @@ export async function spawnAgent(
         args.push('--max-budget-usd', opts.maxBudgetUsd.toString());
       }
 
+      if (opts.yolo) {
+        args.push('--dangerously-skip-permissions');
+      }
+
       logger.debug('Spawning agent', { model: opts.model, maxTurns });
       const stdout = await runClaude(args, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.cwd);
       const output = parseOutput(stdout);
@@ -184,7 +189,7 @@ export async function spawnAgent(
 export async function resumeAgent(
   sessionId: string,
   prompt: string,
-  opts: { maxTurns?: number; timeoutMs?: number; cwd?: string; maxBudgetUsd?: number },
+  opts: { maxTurns?: number; timeoutMs?: number; cwd?: string; maxBudgetUsd?: number; yolo?: boolean },
 ): Promise<AgentResponse> {
   return withErrorBoundary(
     async () => {
@@ -199,6 +204,10 @@ export async function resumeAgent(
 
       if (opts.maxBudgetUsd != null && opts.maxBudgetUsd > 0) {
         args.push('--max-budget-usd', String(opts.maxBudgetUsd));
+      }
+
+      if (opts.yolo) {
+        args.push('--dangerously-skip-permissions');
       }
 
       logger.debug('Resuming agent', { sessionId: sessionId.slice(0, 8), maxTurns });

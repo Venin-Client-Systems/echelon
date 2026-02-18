@@ -83,6 +83,7 @@ describe('Orchestrator', () => {
       },
       approvalMode: 'destructive',
       maxTotalBudgetUsd: 50.0,
+      billing: 'api',
     };
 
     mockCliOptions = {
@@ -93,6 +94,7 @@ describe('Orchestrator', () => {
       resume: false,
       verbose: false,
       telegram: false,
+      yolo: false,
     };
 
     mockSpawnAgent = vi.mocked(spawnAgent);
