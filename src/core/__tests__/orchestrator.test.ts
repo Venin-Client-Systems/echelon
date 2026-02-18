@@ -3,7 +3,8 @@ import { Orchestrator } from '../orchestrator.js';
 import { spawnAgent, resumeAgent } from '../agent.js';
 import { ActionExecutor } from '../action-executor.js';
 import { saveState, createState } from '../state.js';
-import type { EchelonConfig, EchelonState, AgentResponse, CliOptions } from '../../lib/types.js';
+import type { EchelonConfig, EchelonState, CliOptions } from '../../lib/types.js';
+import type { AgentResponse } from '../agent.js';
 import { logger } from '../../lib/logger.js';
 
 // Mock all dependencies
@@ -91,6 +92,7 @@ describe('Orchestrator', () => {
       dryRun: false,
       resume: false,
       verbose: false,
+      telegram: false,
     };
 
     mockSpawnAgent = vi.mocked(spawnAgent);
@@ -397,6 +399,17 @@ describe('Orchestrator', () => {
   });
 
   describe('Shutdown signal handling', () => {
+    let exitSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      // Mock process.exit to prevent actually exiting during tests
+      exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
+    });
+
+    afterEach(() => {
+      exitSpy.mockRestore();
+    });
+
     it('should handle SIGINT gracefully and save state', async () => {
       const orchestrator = new Orchestrator({
         config: mockConfig,
@@ -423,13 +436,13 @@ describe('Orchestrator', () => {
       expect(mockSaveState).toHaveBeenCalled();
     });
 
-    it('should kill Ralphy subprocesses on shutdown', async () => {
+    it('should kill Cheenoski subprocesses on shutdown', async () => {
       const orchestrator = new Orchestrator({
         config: mockConfig,
         cliOptions: mockCliOptions,
       });
 
-      const killSpy = vi.spyOn(orchestrator['executor'], 'killAllRalphy');
+      const killSpy = vi.spyOn(orchestrator['executor'], 'killAll');
 
       orchestrator.shutdown();
 
@@ -442,7 +455,7 @@ describe('Orchestrator', () => {
         cliOptions: mockCliOptions,
       });
 
-      const killSpy = vi.spyOn(orchestrator['executor'], 'killAllRalphy');
+      const killSpy = vi.spyOn(orchestrator['executor'], 'killAll');
 
       orchestrator.shutdown();
       orchestrator.shutdown();
@@ -450,6 +463,7 @@ describe('Orchestrator', () => {
 
       // Should only kill once
       expect(killSpy).toHaveBeenCalledTimes(1);
+      // saveState called once (in shutdown) + the mock tracks only shutdown's call
       expect(mockSaveState).toHaveBeenCalledTimes(1);
     });
   });
@@ -542,9 +556,9 @@ describe('Orchestrator', () => {
       // Should save state after error
       expect(mockSaveState).toHaveBeenCalled();
 
-      const savedState = mockSaveState.mock.calls[mockSaveState.mock.calls.length - 1][0];
-      expect(savedState.agents['2ic'].status).toBe('error');
-      expect(savedState.agents['2ic'].lastError).toBe('Test error');
+      // Check the orchestrator state directly (mock captures references, not snapshots)
+      expect(orchestrator.state.agents['2ic'].status).toBe('error');
+      expect(orchestrator.state.agents['2ic'].lastError).toBe('Test error');
     });
 
     it('should call saveState after state changes', async () => {
@@ -836,9 +850,9 @@ describe('Orchestrator', () => {
         }
       });
 
-      // Use only non-destructive actions to avoid mocking git/gh
+      // 2IC is allowed update_plan actions (team-lead is not)
       const multiActionResponse = `
-Team Lead analysis complete.
+2IC strategic analysis complete.
 
 \`\`\`json
 {"action":"update_plan","plan":"Phase 1"}
@@ -851,10 +865,10 @@ Now updating plan again:
 \`\`\`
 `;
 
-      // Mock all three layers - team lead has multiple actions
+      // Mock all three layers - 2IC has multiple actions
       mockSpawnAgent
         .mockResolvedValueOnce({
-          content: '2IC response',
+          content: multiActionResponse,
           sessionId: '2ic-session',
           costUsd: 0.5,
           durationMs: 1000,
@@ -866,7 +880,7 @@ Now updating plan again:
           durationMs: 1500,
         } as AgentResponse)
         .mockResolvedValueOnce({
-          content: multiActionResponse,
+          content: 'Team Lead response',
           sessionId: 'team-lead-session',
           costUsd: 0.4,
           durationMs: 1200,
@@ -874,7 +888,7 @@ Now updating plan again:
 
       await orchestrator.runCascade('Build authentication system');
 
-      // Both actions should be executed
+      // Both update_plan actions from 2IC should be executed
       expect(executedActions.length).toBeGreaterThanOrEqual(2);
       expect(executedActions[0]).toMatchObject({ action: 'update_plan', plan: 'Phase 1' });
       expect(executedActions[1]).toMatchObject({ action: 'update_plan', plan: 'Phase 2' });

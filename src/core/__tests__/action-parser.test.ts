@@ -261,10 +261,9 @@ And finally, let me create a branch:
   });
 
   describe('Embedded triple backticks in JSON strings (complex case)', () => {
-    it('should attempt to parse triple backticks inside issue body (known limitation)', () => {
-      // Note: The current regex-based parser has a limitation with embedded backticks.
-      // The regex /```json\s*\n([\s\S]*?)```/gi will match up to the first closing backticks,
-      // which may be inside a JSON string. This is a known edge case.
+    it('should handle triple backticks inside issue body via progressive matching', () => {
+      // The parser now tries progressively longer matches when JSON.parse fails,
+      // allowing it to handle embedded triple backticks in JSON strings.
       const text = `
 \`\`\`json
 {
@@ -282,10 +281,9 @@ And finally, let me create a branch:
 
       const { actions, errors } = parseActions(text);
 
-      // Due to the regex limitation, this will fail to parse correctly
-      // The regex stops at the first ``` it finds (inside the body string)
-      expect(actions).toHaveLength(0);
-      expect(logger.debug).toHaveBeenCalled();
+      // Progressive matching finds the correct closing fence
+      expect(actions).toHaveLength(1);
+      expect(actions[0].action).toBe('create_issues');
     });
 
     it('should handle escaped backticks in JSON strings', () => {
