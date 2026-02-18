@@ -13,6 +13,7 @@ import { parseActions, stripActionBlocks } from './action-parser.js';
 import { ActionExecutor } from './action-executor.js';
 import { createState, saveState, loadState, updateAgentStatus } from './state.js';
 import { checkLayerBudget, checkTotalBudget, budgetSummary } from './recovery.js';
+import { fetchIssuesByLabel } from '../cheenoski/github/issues.js';
 
 /**
  * Options for creating an Orchestrator instance.
@@ -176,7 +177,7 @@ export class Orchestrator {
       }
 
       // Phase 2: 2IC → Eng Lead (technical design)
-      const designInput = this.buildDownwardPrompt(strategyMsg);
+      const designInput = await this.buildDownwardPrompt(strategyMsg);
       let designMsg = await this.runLayer('eng-lead', '2ic', designInput);
       if (this.shuttingDown || !designMsg) {
         this.state.status = 'paused';
@@ -208,7 +209,7 @@ export class Orchestrator {
       }
 
       // Phase 3: Eng Lead → Team Lead (issue creation + execution)
-      const execInput = this.buildDownwardPrompt(designMsg, 'team-lead');
+      const execInput = await this.buildDownwardPrompt(designMsg, 'team-lead');
       let execMsg = await this.runLayer('team-lead', 'eng-lead', execInput);
       if (this.shuttingDown || !execMsg) {
         this.state.status = 'paused';
@@ -400,7 +401,7 @@ export class Orchestrator {
   }
 
   /** Build prompt for downstream layer using upstream response */
-  private buildDownwardPrompt(upstreamMsg: LayerMessage, targetRole?: LayerId): string {
+  private async buildDownwardPrompt(upstreamMsg: LayerMessage, targetRole?: LayerId): Promise<string> {
     const narrative = stripActionBlocks(upstreamMsg.content);
     const fromLabel = LAYER_LABELS[upstreamMsg.from];
 
@@ -430,14 +431,41 @@ export class Orchestrator {
       }
     }
 
-    // Specific instructions for the Team Lead
+    // Specific instructions for the Team Lead — inject existing issue context
     if (targetRole === 'team-lead') {
-      parts.push(
-        '',
-        'INSTRUCTION: Convert the above task specifications into a create_issues action block.',
-        'Put ALL issues in a single create_issues action, then invoke_cheenoski for the highest-priority batch.',
-        'Do this NOW — emit the JSON action blocks immediately.',
-      );
+      // Detect cheenoski labels mentioned in the upstream message
+      const labelMatches = upstreamMsg.content.match(/cheenoski-\d+/g);
+      const labels = [...new Set(labelMatches ?? [])];
+
+      // Fetch existing open issues for those labels
+      const existingIssues: { number: number; title: string; labels: string[] }[] = [];
+      for (const label of labels) {
+        const issues = await fetchIssuesByLabel(this.config.project.repo, label);
+        for (const issue of issues) {
+          existingIssues.push({ number: issue.number, title: issue.title, labels: issue.labels });
+        }
+      }
+
+      if (existingIssues.length > 0) {
+        parts.push(
+          '',
+          '## EXISTING ISSUES (already in GitHub)',
+          'These issues already exist and are open. Do NOT create duplicates.',
+          '',
+          ...existingIssues.map(i => `- #${i.number}: ${i.title} [${i.labels.join(', ')}]`),
+          '',
+          'INSTRUCTION: Check if these existing issues already cover the planned work.',
+          'Only emit create_issues for genuinely NEW work not covered above.',
+          'Then emit invoke_cheenoski for each batch label that needs processing.',
+        );
+      } else {
+        parts.push(
+          '',
+          'INSTRUCTION: Convert the above task specifications into a create_issues action block.',
+          'Put ALL issues in a single create_issues action, then invoke_cheenoski for the batch label.',
+          'Do this NOW — emit the JSON action blocks immediately.',
+        );
+      }
     } else {
       parts.push('', 'Based on this, proceed with your responsibilities. Be thorough and specific.');
     }
