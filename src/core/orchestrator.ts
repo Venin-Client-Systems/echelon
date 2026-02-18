@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import { logger } from '../lib/logger.js';
+import { logger, generateCorrelationId, type Logger } from '../lib/logger.js';
 import { buildSystemPrompt } from '../lib/prompts.js';
 import { TranscriptWriter } from '../lib/transcript.js';
 import type {
@@ -26,6 +26,8 @@ export class Orchestrator {
   readonly state: EchelonState;
   readonly executor: ActionExecutor;
   readonly transcript: TranscriptWriter;
+  readonly logger: Logger;
+  readonly correlationId: string;
   private shuttingDown = false;
   private cascadeRunning = false;
   private cascadeStartedAt = 0;
@@ -43,6 +45,14 @@ export class Orchestrator {
     // Create or restore state
     this.state = opts.state ?? createState(opts.config, opts.cliOptions.directive ?? '');
 
+    // Create root logger with session context and correlation ID
+    this.correlationId = generateCorrelationId();
+    this.logger = logger.child({
+      sessionId: this.state.sessionId,
+      correlationId: this.correlationId,
+      component: 'orchestrator',
+    });
+
     // Load message history into bus
     this.bus.loadHistory(this.state.messages);
 
@@ -53,20 +63,20 @@ export class Orchestrator {
     this.bus.onEchelon((event) => {
       switch (event.type) {
         case 'action_executed':
-          logger.info(`Action executed: ${event.action.action}`, { result: event.result.slice(0, 100) });
+          this.this.logger.info(`Action executed: ${event.action.action}`, { result: event.result.slice(0, 100) });
           this.transcript.appendEvent(`Action: ${event.action.action} — ${event.result}`);
           break;
         case 'action_pending':
-          logger.info(`Awaiting approval: ${event.approval.description}`);
+          this.this.logger.info(`Awaiting approval: ${event.approval.description}`);
           break;
         case 'issue_created':
-          logger.info(`Issue #${event.issue.number}: ${event.issue.title}`);
+          this.this.logger.info(`Issue #${event.issue.number}: ${event.issue.title}`);
           break;
         case 'cheenoski_progress':
-          logger.debug(`[Cheenoski:${event.label}] ${event.line}`);
+          this.logger.debug(`[Cheenoski:${event.label}] ${event.line}`);
           break;
         case 'error':
-          logger.error(`[${event.role}] ${event.error}`);
+          this.this.logger.error(`[${event.role}] ${event.error}`);
           break;
       }
     });
@@ -75,7 +85,7 @@ export class Orchestrator {
   /** Run the full hierarchical cascade for a directive */
   async runCascade(directive: string): Promise<void> {
     if (this.cascadeRunning) {
-      logger.warn('Cascade already running — ignoring duplicate call');
+      this.logger.warn('Cascade already running — ignoring duplicate call');
       return;
     }
     this.cascadeRunning = true;
@@ -95,7 +105,7 @@ export class Orchestrator {
       this.transcript.writeHeader(this.config, directive);
     }
 
-    logger.info('Starting cascade', { directive: directive.slice(0, 80), repo: this.config.project.repo });
+    this.logger.info('Starting cascade', { directive: directive.slice(0, 80), repo: this.config.project.repo });
 
     // Install signal handlers once
     if (!this.signalHandlersInstalled) {
@@ -115,7 +125,7 @@ export class Orchestrator {
 
       // Validate layer output before proceeding
       if (!this.validateLayerOutput(strategyMsg)) {
-        logger.error('Strategy message validation failed — aborting cascade');
+        this.logger.error('Strategy message validation failed — aborting cascade');
         this.state.status = 'failed';
         saveState(this.state);
         return;
@@ -125,7 +135,7 @@ export class Orchestrator {
       if (this.isCascadeTimedOut()) {
         this.state.status = 'failed';
         saveState(this.state);
-        logger.error('Cascade aborted: duration timeout exceeded before Eng Lead phase');
+        this.logger.error('Cascade aborted: duration timeout exceeded before Eng Lead phase');
         return;
       }
 
@@ -139,7 +149,7 @@ export class Orchestrator {
       }
 
       if (!this.validateLayerOutput(designMsg)) {
-        logger.error('Design message validation failed — aborting cascade');
+        this.logger.error('Design message validation failed — aborting cascade');
         this.state.status = 'failed';
         saveState(this.state);
         return;
@@ -157,7 +167,7 @@ export class Orchestrator {
       if (this.isCascadeTimedOut()) {
         this.state.status = 'failed';
         saveState(this.state);
-        logger.error('Cascade aborted: duration timeout exceeded before Team Lead phase');
+        this.logger.error('Cascade aborted: duration timeout exceeded before Team Lead phase');
         return;
       }
 
@@ -171,7 +181,7 @@ export class Orchestrator {
       }
 
       if (!this.validateLayerOutput(execMsg)) {
-        logger.error('Execution message validation failed — aborting cascade');
+        this.logger.error('Execution message validation failed — aborting cascade');
         this.state.status = 'failed';
         saveState(this.state);
         return;
@@ -187,7 +197,7 @@ export class Orchestrator {
 
       // Process any pending approvals in headless mode
       if (this.executor.getPending().length > 0) {
-        logger.info('Pending approvals:', {
+        this.logger.info('Pending approvals:', {
           count: this.executor.getPending().length,
           actions: this.executor.getPending().map(a => a.description),
         });
@@ -200,13 +210,13 @@ export class Orchestrator {
       const costLabel = this.config.billing === 'max'
         ? `$${this.state.totalCost.toFixed(2)} (estimated)`
         : `$${this.state.totalCost.toFixed(2)}`;
-      logger.info('Cascade complete', {
+      this.logger.info('Cascade complete', {
         messages: this.state.messages.length,
         issues: this.state.issues.length,
         cost: costLabel,
         pending: this.executor.getPending().length,
       });
-      logger.info(`Budget: ${budgetSummary(this.state, this.config)}`);
+      this.logger.info(`Budget: ${budgetSummary(this.state, this.config)}`);
 
       this.transcript.writeSummary(this.state.totalCost, new Date(this.state.startedAt));
     } finally {
@@ -223,10 +233,13 @@ export class Orchestrator {
     const layerConfig = this.config.layers[role];
     const agentState = this.state.agents[role];
 
+    // Create child logger with layer role context
+    const layerLogger = this.logger.child({ role });
+
     // Budget checks (skipped when billing is 'max' — costs are not real)
     if (this.config.billing !== 'max') {
       if (agentState.totalCost >= layerConfig.maxBudgetUsd) {
-        logger.warn(`${LAYER_LABELS[role]} budget exceeded`, {
+        this.logger.warn(`${LAYER_LABELS[role]} budget exceeded`, {
           spent: agentState.totalCost,
           limit: layerConfig.maxBudgetUsd,
         });
@@ -234,7 +247,7 @@ export class Orchestrator {
       }
 
       if (this.state.totalCost >= this.config.maxTotalBudgetUsd) {
-        logger.warn('Total budget exceeded', {
+        this.logger.warn('Total budget exceeded', {
           spent: this.state.totalCost,
           limit: this.config.maxTotalBudgetUsd,
         });
@@ -287,7 +300,7 @@ export class Orchestrator {
       // Parse actions from response
       const { actions, errors } = parseActions(response.content);
       if (errors.length > 0) {
-        logger.warn(`${LAYER_LABELS[role]} had action parse errors`, { errors });
+        layerLogger.warn(`${LAYER_LABELS[role]} had action parse errors`, { errors });
       }
 
       // Determine message target (next layer down or same layer for info requests)
@@ -322,10 +335,11 @@ export class Orchestrator {
 
       // Log summary
       const narrative = stripActionBlocks(response.content);
-      logger.info(`[${LAYER_LABELS[role]}] ${narrative.slice(0, 150)}...`, {
+      layerLogger.info(`[${LAYER_LABELS[role]}] ${narrative.slice(0, 150)}...`, {
         cost: `$${response.costUsd.toFixed(4)}`,
         duration: `${(response.durationMs / 1000).toFixed(1)}s`,
         actions: actions.length,
+        sessionId: response.sessionId,
       });
 
       return msg;
@@ -336,7 +350,15 @@ export class Orchestrator {
       this.bus.emitEchelon({ type: 'error', role, error: errMsg });
       this.state.status = 'failed';
       saveState(this.state);
-      logger.error(`Layer ${LAYER_LABELS[role]} failed, cascade aborted`, { error: errMsg });
+
+      // Use structured error logging with stack trace
+      if (err instanceof Error) {
+        layerLogger.errorWithType(`Layer ${LAYER_LABELS[role]} failed, cascade aborted`, 'crash', err, {
+          sessionId: agentState.sessionId,
+        });
+      } else {
+        layerLogger.error(`Layer ${LAYER_LABELS[role]} failed, cascade aborted`, { error: errMsg });
+      }
       return null;
     }
   }
@@ -435,7 +457,7 @@ export class Orchestrator {
         'Be decisive — give concrete recommendations, not options.',
       ].join('\n');
 
-      logger.info(`Loopback: ${LAYER_LABELS[requestingRole]} → ${LAYER_LABELS[targetRole]}`, {
+      this.logger.info(`Loopback: ${LAYER_LABELS[requestingRole]} → ${LAYER_LABELS[targetRole]}`, {
         questions: questions.length,
         round: round + 1,
       });
@@ -458,7 +480,7 @@ export class Orchestrator {
       'Create issues and invoke cheenoski. Do not ask further questions.',
     ].join('\n');
 
-    logger.info(`Loopback: feeding answers back to ${LAYER_LABELS[requestingRole]}`, {
+    this.logger.info(`Loopback: feeding answers back to ${LAYER_LABELS[requestingRole]}`, {
       round: round + 1,
     });
 
@@ -484,7 +506,7 @@ export class Orchestrator {
 
     return actions.filter((action) => {
       if (allowed.has(action.action)) return true;
-      logger.warn(`Dropping "${action.action}" from ${LAYER_LABELS[role]} — not in allowed actions for this role`);
+      this.logger.warn(`Dropping "${action.action}" from ${LAYER_LABELS[role]} — not in allowed actions for this role`);
       return false;
     });
   }
@@ -511,11 +533,11 @@ export class Orchestrator {
   /** Validate layer output before passing downstream */
   private validateLayerOutput(msg: LayerMessage): boolean {
     if (!msg.content || msg.content.trim().length === 0) {
-      logger.warn(`Empty content from ${msg.from}`);
+      this.logger.warn(`Empty content from ${msg.from}`);
       return false;
     }
     if (msg.costUsd < 0) {
-      logger.warn(`Invalid cost from ${msg.from}: ${msg.costUsd}`);
+      this.logger.warn(`Invalid cost from ${msg.from}: ${msg.costUsd}`);
       return false;
     }
     return true;
@@ -549,7 +571,7 @@ export class Orchestrator {
     if (elapsed > maxMs) {
       const elapsedMin = (elapsed / 60_000).toFixed(1);
       const maxMin = (maxMs / 60_000).toFixed(0);
-      logger.error(`Cascade timed out after ${elapsedMin}min (max: ${maxMin}min) — aborting gracefully`);
+      this.logger.error(`Cascade timed out after ${elapsedMin}min (max: ${maxMin}min) — aborting gracefully`);
       return true;
     }
     return false;
@@ -559,7 +581,7 @@ export class Orchestrator {
   shutdown(): void {
     if (this.shuttingDown) return;
     this.shuttingDown = true;
-    logger.info('Shutting down — killing subprocesses, saving state...');
+    this.logger.info('Shutting down — killing subprocesses, saving state...');
 
     // Kill Cheenoski subprocesses
     this.executor.killAll();
@@ -568,7 +590,7 @@ export class Orchestrator {
     saveState(this.state);
     this.transcript.writeSummary(this.state.totalCost, new Date(this.state.startedAt));
     this.bus.emitEchelon({ type: 'shutdown', reason: 'user' });
-    logger.info('State saved. Resume with --resume flag.', {
+    this.logger.info('State saved. Resume with --resume flag.', {
       session: this.state.sessionId,
       cost: `$${this.state.totalCost.toFixed(2)}`,
     });
