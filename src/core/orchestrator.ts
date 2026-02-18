@@ -474,19 +474,26 @@ export class Orchestrator {
     }
 
     // For Team Lead: inject existing open issues to prevent duplicates
+    // Limit to 20 most recent to avoid token waste
     if (targetRole === 'team-lead') {
       try {
         const { stdout } = await githubClient.exec([
           'issue', 'list',
           '--repo', this.config.project.repo,
           '--state', 'open',
-          '--limit', '100',
+          '--limit', '20', // Reduced from 100 to limit token usage
           '--json', 'number,title,labels',
         ]);
         const existingIssues = JSON.parse(stdout) as Array<{ number: number; title: string; labels: Array<{ name: string }> }>;
-        if (existingIssues.length > 0) {
+
+        // Filter to only show issues with cheenoski labels (likely related to current work)
+        const relevantIssues = existingIssues.filter(issue =>
+          issue.labels.some(l => l.name.startsWith('cheenoski-') || l.name.startsWith('ralphy-'))
+        );
+
+        if (relevantIssues.length > 0) {
           parts.push('', '## Existing Open Issues (DO NOT create duplicates)');
-          for (const issue of existingIssues) {
+          for (const issue of relevantIssues) {
             const labels = issue.labels.map(l => l.name).join(', ');
             parts.push(`- #${issue.number}: ${issue.title} [${labels}]`);
           }
