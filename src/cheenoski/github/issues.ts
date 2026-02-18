@@ -1,9 +1,6 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import type { CheenoskiIssue } from '../types.js';
 import { logger } from '../../lib/logger.js';
-
-const execFileAsync = promisify(execFile);
+import { githubClient } from '../../lib/github-client.js';
 
 /** Fetch open issues by label from a repo */
 export async function fetchIssuesByLabel(
@@ -12,14 +9,14 @@ export async function fetchIssuesByLabel(
   limit = 50,
 ): Promise<CheenoskiIssue[]> {
   try {
-    const { stdout } = await execFileAsync('gh', [
+    const { stdout } = await githubClient.exec([
       'issue', 'list',
       '--repo', repo,
       '--label', label,
       '--state', 'open',
       '--limit', String(limit),
       '--json', 'number,title,body,labels,state,assignees,url',
-    ], { encoding: 'utf-8' });
+    ]);
 
     const raw = JSON.parse(stdout);
     return raw.map((issue: any) => ({
@@ -45,20 +42,20 @@ export async function closeIssue(
 ): Promise<void> {
   if (comment) {
     try {
-      await execFileAsync('gh', [
+      await githubClient.exec([
         'issue', 'comment', String(issueNumber),
         '--repo', repo,
         '--body', comment,
-      ], { encoding: 'utf-8' });
+      ]);
     } catch (err) {
       logger.warn(`Failed to comment on issue #${issueNumber}: ${err}`);
     }
   }
 
-  await execFileAsync('gh', [
+  await githubClient.exec([
     'issue', 'close', String(issueNumber),
     '--repo', repo,
-  ], { encoding: 'utf-8' });
+  ]);
 
   logger.info(`Closed issue #${issueNumber}`);
 }
@@ -69,11 +66,11 @@ export async function commentOnIssue(
   issueNumber: number,
   body: string,
 ): Promise<void> {
-  await execFileAsync('gh', [
+  await githubClient.exec([
     'issue', 'comment', String(issueNumber),
     '--repo', repo,
     '--body', body,
-  ], { encoding: 'utf-8' });
+  ]);
 }
 
 /** Add a label to an issue */
@@ -82,11 +79,11 @@ export async function addLabel(
   issueNumber: number,
   label: string,
 ): Promise<void> {
-  await execFileAsync('gh', [
+  await githubClient.exec([
     'issue', 'edit', String(issueNumber),
     '--repo', repo,
     '--add-label', label,
-  ], { encoding: 'utf-8' });
+  ]);
 }
 
 /** Check if an issue is already being worked on (has "in-progress" label or assignee) */
@@ -108,10 +105,10 @@ export async function detectLoop(
   maxCycles = 2,
 ): Promise<boolean> {
   try {
-    const { stdout } = await execFileAsync('gh', [
+    const { stdout } = await githubClient.exec([
       'api', `repos/${repo}/issues/${issueNumber}/events`,
       '--jq', '[.[] | select(.event == "closed" or .event == "reopened")] | length',
-    ], { encoding: 'utf-8' });
+    ]);
 
     const eventCount = parseInt(stdout.trim(), 10);
     // Each close+reopen cycle = 2 events. If we see >= maxCycles*2, it's a loop.

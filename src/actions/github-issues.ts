@@ -1,9 +1,6 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { logger } from '../lib/logger.js';
+import { githubClient } from '../lib/github-client.js';
 import type { IssuePayload } from '../lib/types.js';
-
-const execFileAsync = promisify(execFile);
 
 export interface CreatedIssue {
   number: number;
@@ -28,9 +25,7 @@ function sanitizeString(str: string): string {
 async function ensureLabels(labels: string[], repo: string): Promise<void> {
   for (const label of labels) {
     try {
-      await execFileAsync('gh', ['label', 'create', label, '--repo', repo, '--force'], {
-        encoding: 'utf-8',
-      });
+      await githubClient.exec(['label', 'create', label, '--repo', repo, '--force']);
     } catch {
       // Label may already exist or gh may not support --force; ignore
     }
@@ -91,7 +86,7 @@ export async function createIssues(
         args.push('--assignee', assignee);
       }
 
-      const { stdout } = await execFileAsync('gh', args, { encoding: 'utf-8' });
+      const { stdout } = await githubClient.exec(args);
       const output = stdout.trim();
 
       // gh issue create outputs a URL like https://github.com/owner/repo/issues/42
@@ -126,9 +121,7 @@ export async function closeIssue(issueNumber: number, repo: string): Promise<voi
   }
 
   try {
-    await execFileAsync('gh', ['issue', 'close', String(issueNumber), '--repo', repo], {
-      encoding: 'utf-8',
-    });
+    await githubClient.exec(['issue', 'close', String(issueNumber), '--repo', repo]);
     logger.info(`Closed issue #${issueNumber}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
