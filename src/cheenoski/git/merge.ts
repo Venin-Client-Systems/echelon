@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../../lib/logger.js';
+import { githubClient } from '../../lib/github-client.js';
 import { appendToLedger } from './branch-ledger.js';
 
 const execFileAsync = promisify(execFile);
@@ -226,7 +227,7 @@ export async function createPullRequest(
   if (draft) args.push('--draft');
 
   try {
-    const { stdout } = await execFileAsync('gh', args, { encoding: 'utf-8' });
+    const { stdout } = await githubClient.exec(args);
     const url = stdout.trim();
     const match = url.match(/\/pull\/(\d+)/);
     const number = match ? parseInt(match[1], 10) : 0;

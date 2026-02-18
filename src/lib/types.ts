@@ -99,6 +99,16 @@ export type TelegramHealthConfig = z.infer<typeof TelegramHealthConfigSchema>;
 /** @category Configuration */
 export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
 
+// --- GitHub Rate Limiting ---
+
+export const RateLimitStateSchema = z.object({
+  remaining: z.number().int(),
+  limit: z.number().int(),
+  reset: z.number().int(), // Unix timestamp
+});
+
+export type RateLimitState = z.infer<typeof RateLimitStateSchema>;
+
 // --- Layer Types ---
 
 /**
@@ -355,4 +365,5 @@ export type EchelonEvent =
   | { type: 'state_saved'; path: string }
   | { type: 'cascade_complete'; directive: string }
   | { type: 'shutdown'; reason: string }
+  | { type: 'github_rate_limit_exceeded'; state: RateLimitState; resetAt: string }
   | CheenoskiEvent;
