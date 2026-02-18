@@ -1,7 +1,7 @@
 import type { MessageBus } from '../core/message-bus.js';
 import type { EchelonConfig } from '../lib/types.js';
 import type { CheenoskiIssue, Slot, SchedulerState, EngineRunner } from './types.js';
-import { logger } from '../lib/logger.js';
+import { logger, shouldLogSampledEvent, type Logger } from '../lib/logger.js';
 import { detectDomain, canRunParallel, slugify } from './domain.js';
 import { createWorktree, removeWorktree } from './git/worktree.js';
 import { mergeBranch, createPullRequest, hasChanges } from './git/merge.js';
@@ -51,6 +51,7 @@ export class Scheduler {
   private config: EchelonConfig;
   private bus: MessageBus;
   private label: string;
+  private logger: Logger;
   private slots: Slot[] = [];
   private issueQueue: CheenoskiIssue[] = [];
   private activeEngines = new Map<number, EngineRunner>();
@@ -66,6 +67,11 @@ export class Scheduler {
     this.config = config;
     this.bus = bus;
     this.label = label;
+    // Create scheduler logger with component context
+    this.logger = logger.child({
+      component: 'scheduler',
+      cheenoskiLabel: label,
+    });
   }
 
   get state(): SchedulerState {
@@ -86,7 +92,7 @@ export class Scheduler {
     this.issueQueue = [...issues];
     const maxParallel = this.config.engineers.maxParallel;
 
-    logger.info(`Scheduler starting: ${issues.length} issues, ${maxParallel} parallel slots`);
+    this.logger.info(`Scheduler starting: ${issues.length} issues, ${maxParallel} parallel slots`);
 
     try {
       // Fill initial slots
@@ -140,9 +146,9 @@ export class Scheduler {
     for (const [slotId, engine] of this.activeEngines) {
       try {
         engine.kill();
-        logger.info(`Killed engine for slot ${slotId}`);
+        this.logger.info(`Killed engine for slot ${slotId}`);
       } catch (err) {
-        logger.warn(`Failed to kill engine for slot ${slotId}: ${err instanceof Error ? err.message : err}`);
+        this.logger.warn(`Failed to kill engine for slot ${slotId}: ${err instanceof Error ? err.message : err}`);
       }
     }
     this.activeEngines.clear();
@@ -180,9 +186,14 @@ export class Scheduler {
 
           // Track the running slot promise
           const slotPromise = this.runSlot(slot).catch((err) => {
-            logger.error(`Unhandled error in slot #${slot.issueNumber}`, {
-              error: err instanceof Error ? err.message : String(err),
-            });
+            const slotLogger = this.logger.child({ slot: slot.id, issueNumber: slot.issueNumber });
+            if (err instanceof Error) {
+              slotLogger.errorWithType(`Unhandled error in slot`, 'crash', err);
+            } else {
+              slotLogger.error(`Unhandled error in slot`, {
+                error: String(err),
+              });
+            }
             // Mark slot as failed on uncaught error
             slot.status = 'failed';
             slot.error = err instanceof Error ? err.message : String(err);
@@ -229,9 +240,11 @@ export class Scheduler {
 
   /** Create a slot for an issue (worktree, branch, etc.) */
   private async createSlot(issue: CheenoskiIssue): Promise<Slot | null> {
+    const issueLogger = this.logger.child({ issueNumber: issue.number });
+
     // Skip issues already in progress
     if (isIssueInProgress(issue)) {
-      logger.info(`Issue #${issue.number} already in progress (assigned/WIP), skipping`);
+      issueLogger.info(`Issue already in progress (assigned/WIP), skipping`);
       return null;
     }
 
@@ -245,7 +258,7 @@ export class Scheduler {
 
     // Claim the issue
     if (!claimIssue(issue.number)) {
-      logger.info(`Issue #${issue.number} claimed by another instance, skipping`);
+      issueLogger.info(`Issue claimed by another instance, skipping`);
       return null;
     }
 
@@ -276,6 +289,11 @@ export class Scheduler {
   /** Run an engine in a slot's worktree */
   private async runSlot(slot: Slot): Promise<void> {
     const maxRetries = slot.maxRetries;
+    // Create slot-specific logger with full context
+    const slotLogger = this.logger.child({
+      slot: slot.id,
+      issueNumber: slot.issueNumber,
+    });
 
     // Ensure issue is released even if runSlot throws
     try {
@@ -351,7 +369,7 @@ export class Scheduler {
             // Tool detection missed changes — check git directly
             hasActualChanges = await hasChanges(slot.worktreePath, this.config.project.baseBranch);
             if (hasActualChanges) {
-              logger.info(`Git detected changes in worktree for #${slot.issueNumber} (tool detection missed)`);
+              slotLogger.info(`Git detected changes in worktree (tool detection missed)`);
             }
           }
 
@@ -394,7 +412,7 @@ export class Scheduler {
                     prUrl: pr.url,
                   });
                 } catch (err) {
-                  logger.warn(`PR creation failed for #${slot.issueNumber}: ${err instanceof Error ? err.message : err}`);
+                  slotLogger.warn(`PR creation failed: ${err instanceof Error ? err.message : err}`);
                 }
               }
 
@@ -427,7 +445,7 @@ export class Scheduler {
               });
 
               if (attempt < maxRetries) {
-                logger.warn(`Merge failed for #${slot.issueNumber}, retrying (attempt ${attempt + 1}/${maxRetries})`);
+                slotLogger.warn(`Merge failed, retrying (attempt ${attempt + 1}/${maxRetries})`);
                 await this.cleanupSlotWorktree(slot);
                 continue;
               }
@@ -437,7 +455,7 @@ export class Scheduler {
             }
           } else if (result.errorType === 'rate_limit') {
             if (attempt < maxRetries) {
-              logger.warn(`All engines rate-limited for #${slot.issueNumber}, waiting before retry`);
+              slotLogger.warn(`All engines rate-limited, waiting before retry`);
               await this.cleanupSlotWorktree(slot);
               await sleep(30_000);
               continue;
@@ -465,7 +483,11 @@ export class Scheduler {
           }
         } catch (err) {
           slot.error = err instanceof Error ? err.message : String(err);
-          logger.error(`Slot #${slot.issueNumber} attempt ${attempt} failed: ${slot.error}`);
+          if (err instanceof Error) {
+            slotLogger.errorWithType(`Slot attempt ${attempt} failed`, 'crash', err);
+          } else {
+            slotLogger.error(`Slot attempt ${attempt} failed: ${slot.error}`);
+          }
           if (attempt < maxRetries) {
             await this.cleanupSlotWorktree(slot);
             continue;
@@ -483,7 +505,11 @@ export class Scheduler {
       }
     } catch (outerErr) {
       // Catch any errors from the retry loop itself
-      logger.error(`Fatal error in slot #${slot.issueNumber}: ${outerErr instanceof Error ? outerErr.message : outerErr}`);
+      if (outerErr instanceof Error) {
+        slotLogger.errorWithType(`Fatal error in slot`, 'crash', outerErr);
+      } else {
+        slotLogger.error(`Fatal error in slot: ${String(outerErr)}`);
+      }
       slot.status = 'failed';
       slot.error = outerErr instanceof Error ? outerErr.message : String(outerErr);
       await this.cleanupSlotWorktree(slot);
@@ -504,7 +530,8 @@ export class Scheduler {
       try {
         await removeWorktree(this.config.project.path, slot.worktreePath, slot.branchName, slot.issueNumber);
       } catch (err) {
-        logger.warn(`Failed to cleanup worktree for slot #${slot.issueNumber}: ${err instanceof Error ? err.message : err}`);
+        const slotLogger = this.logger.child({ slot: slot.id, issueNumber: slot.issueNumber });
+        slotLogger.warn(`Failed to cleanup worktree: ${err instanceof Error ? err.message : err}`);
       } finally {
         // Always clear the path reference even if removal failed
         slot.worktreePath = null;
@@ -525,7 +552,8 @@ export class Scheduler {
       // The runSlot() error handler will catch the resulting failure and handle retries.
       if (elapsed > maxSlotDurationMs) {
         const elapsedSec = (elapsed / 1000).toFixed(0);
-        logger.error(`Slot #${slot.issueNumber} killed after ${elapsedSec}s — exceeded max slot duration (${(maxSlotDurationMs / 1000).toFixed(0)}s)`);
+        const slotLogger = this.logger.child({ slot: slot.id, issueNumber: slot.issueNumber });
+        slotLogger.error(`Slot killed after ${elapsedSec}s — exceeded max slot duration (${(maxSlotDurationMs / 1000).toFixed(0)}s)`);
 
         // Kill the engine process — runSlot's catch block will handle retry/failure
         const engine = this.activeEngines.get(slot.id);
@@ -533,7 +561,7 @@ export class Scheduler {
           try {
             engine.kill();
           } catch (err) {
-            logger.warn(`Failed to kill engine for slot #${slot.issueNumber}: ${err instanceof Error ? err.message : err}`);
+            slotLogger.warn(`Failed to kill engine: ${err instanceof Error ? err.message : err}`);
           }
           this.unregisterEngine(slot.id);
         }
@@ -544,7 +572,8 @@ export class Scheduler {
       if (elapsed > stuckWarningMs) {
         const sinceThreshold = elapsed - stuckWarningMs;
         if (sinceThreshold < 1000 || (sinceThreshold % 60_000 < 1000)) {
-          logger.warn(`Slot #${slot.issueNumber} running for ${(elapsed / 1000).toFixed(0)}s — may be stuck`);
+          const slotLogger = this.logger.child({ slot: slot.id, issueNumber: slot.issueNumber });
+          slotLogger.warn(`Slot running for ${(elapsed / 1000).toFixed(0)}s — may be stuck`);
         }
       }
     }
