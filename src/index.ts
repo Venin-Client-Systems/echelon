@@ -131,14 +131,19 @@ async function runOrchestrator(opts: CliResult & { command: 'run' }): Promise<vo
       process.exit(1);
     }
 
-    // Install cleanup handler for headless mode
-    const cleanup = () => {
-      logger.info('Cleaning up orchestrator...');
+    // Install cleanup handler for headless mode.
+    // orchestrator.shutdown() no longer calls process.exit() (to allow finally blocks),
+    // so the signal handlers must exit the process after cleanup.
+    const cleanup = (signal?: string) => {
+      logger.info(`Cleaning up orchestrator (${signal ?? 'exit'})...`);
       orchestrator.shutdown();
+      if (signal === 'SIGINT' || signal === 'SIGTERM') {
+        process.exit(0);
+      }
     };
-    process.once('exit', cleanup);
-    process.once('SIGINT', cleanup);
-    process.once('SIGTERM', cleanup);
+    process.once('exit', () => cleanup('exit'));
+    process.once('SIGINT', () => cleanup('SIGINT'));
+    process.once('SIGTERM', () => cleanup('SIGTERM'));
 
     try {
       if (directive) {

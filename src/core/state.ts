@@ -113,7 +113,8 @@ export function loadState(sessionId: string): EchelonState | null {
 export function findLatestSession(repo: string): string | null {
   if (!existsSync(SESSIONS_DIR)) return null;
 
-  const prefix = repo.replace('/', '-');
+  // Must match the same sanitization as createState uses for sessionId generation
+  const prefix = repo.replace(/[^a-zA-Z0-9-]/g, '-');
   const dirs = readdirSync(SESSIONS_DIR)
     .filter(d => d.startsWith(prefix))
     .sort()

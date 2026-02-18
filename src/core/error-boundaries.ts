@@ -64,8 +64,11 @@ export class AgentErrorClassifier {
     if (
       msg.includes('econnrefused') ||
       msg.includes('enotfound') ||
-      msg.includes('network') ||
-      msg.includes('connection')
+      msg.includes('econnreset') ||
+      msg.includes('enetunreach') ||
+      msg.includes('network unreachable') ||
+      msg.includes('connection refused') ||
+      msg.includes('connection reset')
     ) {
       return {
         type: 'network',
@@ -77,7 +80,7 @@ export class AgentErrorClassifier {
     }
 
     // Process crash (exit code, killed, etc.)
-    if (msg.includes('exit') || msg.includes('crash') || msg.includes('killed')) {
+    if (msg.includes('exited') || msg.includes('crashed') || msg.includes('killed') || msg.includes('signal')) {
       return {
         type: 'crash',
         message: error.message,
@@ -193,7 +196,12 @@ export class CircuitBreaker {
   recordFailure(): void {
     this.failureCount++;
 
-    if (this.failureCount >= this.threshold && this.state === 'closed') {
+    if (this.state === 'half_open') {
+      // A failure in half-open state means the problem persists — re-open
+      logger.warn('Circuit breaker re-opened after half-open probe failure');
+      this.state = 'open';
+      this.openedAt = Date.now();
+    } else if (this.failureCount >= this.threshold && this.state === 'closed') {
       logger.warn(`Circuit breaker opened after ${this.failureCount} consecutive failures`);
       this.state = 'open';
       this.openedAt = Date.now();

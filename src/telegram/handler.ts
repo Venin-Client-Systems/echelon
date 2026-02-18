@@ -121,7 +121,9 @@ function estimateTokens(messages: StoredMessage[]): number {
   return Math.ceil(chars / 4);
 }
 
-/** Trim history to stay under token limit */
+/** Trim history to stay under token limit while preserving valid API sequences.
+ *  The Anthropic API requires messages to alternate user/assistant and never
+ *  start with an assistant message or leave orphaned tool_result messages. */
 function trimHistory(messages: StoredMessage[]): StoredMessage[] {
   while (messages.length > 0 && estimateTokens(messages) > MAX_HISTORY_TOKENS) {
     // Remove oldest message pair (user + assistant)
@@ -131,6 +133,23 @@ function trimHistory(messages: StoredMessage[]): StoredMessage[] {
       messages = messages.slice(1);
     }
   }
+
+  // Ensure the sequence starts with a 'user' message (API requirement).
+  // After trimming, we may have an orphaned 'assistant' or tool_result first.
+  while (messages.length > 0 && messages[0].role !== 'user') {
+    messages = messages.slice(1);
+  }
+
+  // Ensure the sequence doesn't start with a tool_result 'user' message
+  // (which would be orphaned without its preceding assistant tool_use).
+  while (messages.length > 0 && messages[0].role === 'user' && Array.isArray(messages[0].content)) {
+    messages = messages.slice(1);
+    // Skip any following assistant message too to maintain alternation
+    if (messages.length > 0 && messages[0].role === 'assistant') {
+      messages = messages.slice(1);
+    }
+  }
+
   return messages;
 }
 

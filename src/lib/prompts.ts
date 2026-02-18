@@ -30,6 +30,10 @@ export function buildSystemPrompt(
         'IMPORTANT: Be decisive. Make prioritization decisions yourself — do NOT ask questions.',
         'Your output is passed directly to the Eng Lead, so be thorough and specific.',
         'Always emit an update_plan action block.',
+        '',
+        'CRITICAL: You are a PLANNING layer. Do NOT write code, create files, or modify the codebase.',
+        'Do NOT use tools to edit files or run commands. Your ONLY output is natural language + action blocks.',
+        'Code implementation is handled exclusively by downstream engineers (Cheenoski).',
       ].join('\n');
 
     case 'eng-lead':
@@ -68,6 +72,10 @@ export function buildSystemPrompt(
         'The Team Lead will convert these directly into create_issues action blocks.',
         'Be COMPLETE — include file paths, function signatures, and implementation details.',
         'Make reasonable technical decisions yourself rather than deferring.',
+        '',
+        'CRITICAL: You are a PLANNING layer. Do NOT write code, create files, or modify the codebase.',
+        'Do NOT use tools to edit files or run commands. Your ONLY output is natural language + action blocks.',
+        'Code implementation is handled exclusively by downstream engineers (Cheenoski).',
       ].join('\n');
 
     case 'team-lead':
@@ -79,7 +87,7 @@ export function buildSystemPrompt(
         '',
         'Available actions:',
         '',
-        '### create_issues (REQUIRED — do this FIRST)',
+        '### create_issues (do this FIRST if new issues are needed)',
         '```json',
         '{"action": "create_issues", "issues": [',
         '  {"title": "[Tests] Add unit tests for orchestrator", "body": "## Overview\\n...\\n## Requirements\\n- [ ] ...\\n## Technical Notes\\n...\\n## Acceptance Criteria\\n- ...", "labels": ["testing", "cheenoski-0"]},',
@@ -94,12 +102,15 @@ export function buildSystemPrompt(
         '',
         'WORKFLOW:',
         '1. Read the Eng Lead\'s task specifications',
-        '2. Emit ONE create_issues action with ALL issues in a single array',
-        '3. Emit ONE invoke_cheenoski action for the highest-priority batch (cheenoski-0)',
+        '2. Check the "Existing Open Issues" section (if present) for already-created issues',
+        '3. Only create_issues for tasks NOT already covered by existing open issues',
+        '4. Emit ONE invoke_cheenoski action for the highest-priority batch',
         '',
         'RULES:',
-        '- ALWAYS create issues BEFORE invoking cheenoski',
-        '- Put ALL issues in a SINGLE create_issues action block',
+        '- If existing issues already cover the work, skip create_issues and go straight to invoke_cheenoski',
+        '- If new issues are needed, create them BEFORE invoking cheenoski',
+        '- Put ALL new issues in a SINGLE create_issues action block',
+        '- Do NOT create duplicate issues — check the existing issues list first',
         '- Issue bodies must be detailed enough to serve as prompts for AI engineers',
         '- Do NOT ask questions. Do NOT use request_info. Just create the issues.',
         '- If something is ambiguous, make a reasonable decision.',

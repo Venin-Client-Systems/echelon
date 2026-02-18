@@ -31,17 +31,23 @@ export function createTelegramBot(config: EchelonConfig): Bot {
     );
   }
   const botToken = process.env.ECHELON_TELEGRAM_BOT_TOKEN || tgConfig.token;
-  const chatId = process.env.ECHELON_TELEGRAM_CHAT_ID || '';
+  const chatId = (process.env.ECHELON_TELEGRAM_CHAT_ID ?? '').trim();
   if (!botToken) {
     throw new Error('Missing telegram.token or ECHELON_TELEGRAM_BOT_TOKEN');
+  }
+  if (!chatId) {
+    throw new Error(
+      'Missing Telegram chat ID. Set ECHELON_TELEGRAM_CHAT_ID env var or telegram.chatId in config. ' +
+      'Send a message to the bot and check logs for the chat ID.',
+    );
   }
   _chatId = chatId;
   _bot = new Bot(botToken);
 
   // Auth middleware — verify chat ID and user ID
-  const allowedUserIds: string[] = process.env.ECHELON_TELEGRAM_ALLOWED_USERS?.split(',').map(s => s.trim())
-    ?? tgConfig.allowedUserIds.map(String)
-    ?? [];
+  const envUsers = process.env.ECHELON_TELEGRAM_ALLOWED_USERS?.split(',').map(s => s.trim()).filter(Boolean);
+  const configUsers = tgConfig.allowedUserIds?.map(String) ?? [];
+  const allowedUserIds: string[] = (envUsers && envUsers.length > 0) ? envUsers : configUsers;
 
   _bot.use(async (ctx, next) => {
     if (String(ctx.chat?.id) !== chatId) {
@@ -62,9 +68,11 @@ export function createTelegramBot(config: EchelonConfig): Bot {
       });
     }
 
-    if (allowedUserIds.length > 0 && fromUserId && !allowedUserIds.includes(fromUserId)) {
-      logger.warn('Unauthorized Telegram user', { fromUserId, chatId: ctx.chat?.id });
-      return; // Silently ignore
+    if (allowedUserIds.length > 0) {
+      if (!fromUserId || !allowedUserIds.includes(fromUserId)) {
+        logger.warn('Unauthorized Telegram user', { fromUserId: fromUserId ?? 'unknown', chatId: ctx.chat?.id });
+        return; // Silently ignore
+      }
     }
 
     await next();
@@ -325,6 +333,9 @@ export async function startBot(config: EchelonConfig): Promise<void> {
       logger.error('Shutdown error', {
         error: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      // Ensure process exits after cleanup — without this Node stays alive
+      process.exit(0);
     }
   };
   process.once('SIGINT', shutdown);
