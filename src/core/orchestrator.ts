@@ -303,13 +303,15 @@ export class Orchestrator {
       // - Error classification (rate limit, timeout, crash, quota)
       // - Exponential backoff with jitter
       // - Circuit breaker (opens after 5 consecutive failures)
+      // Management layers (2IC, Eng Lead, Team Lead) must NEVER get
+      // --dangerously-skip-permissions. They should only emit action blocks,
+      // not write files directly. Only Cheenoski engineers get yolo access.
       const response = agentState.sessionId
         ? await resumeAgent(agentState.sessionId, input, {
             maxTurns,
             timeoutMs: layerConfig.timeoutMs,
             cwd: this.config.project.path,
             maxBudgetUsd: layerConfig.maxBudgetUsd - agentState.totalCost,
-            yolo: this.yolo,
           })
         : await spawnAgent(input, {
             model: layerConfig.model,
@@ -318,7 +320,6 @@ export class Orchestrator {
             maxTurns,
             timeoutMs: layerConfig.timeoutMs,
             cwd: this.config.project.path,
-            yolo: this.yolo,
           });
 
       // Update agent state

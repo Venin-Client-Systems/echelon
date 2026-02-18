@@ -30,6 +30,9 @@ export function buildSystemPrompt(
         'IMPORTANT: Be decisive. Make prioritization decisions yourself — do NOT ask questions.',
         'Your output is passed directly to the Eng Lead, so be thorough and specific.',
         'Always emit an update_plan action block.',
+        '',
+        'CRITICAL: You are a PLANNING layer. Do NOT write code, create files, or modify the codebase.',
+        'Your ONLY output is strategic direction and an update_plan action block.',
       ].join('\n');
 
     case 'eng-lead':
@@ -68,6 +71,9 @@ export function buildSystemPrompt(
         'The Team Lead will convert these directly into create_issues action blocks.',
         'Be COMPLETE — include file paths, function signatures, and implementation details.',
         'Make reasonable technical decisions yourself rather than deferring.',
+        '',
+        'CRITICAL: You are a PLANNING layer. Do NOT write code, create files, or modify the codebase.',
+        'Your ONLY output is technical specifications for the Team Lead to create as GitHub issues.',
       ].join('\n');
 
     case 'team-lead':
