@@ -1,8 +1,5 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { logger } from '../lib/logger.js';
-
-const execFileAsync = promisify(execFile);
+import { githubClient } from '../lib/github-client.js';
 
 /** Validate repo format (owner/repo) */
 function isValidRepo(repo: string): boolean {
@@ -26,11 +23,11 @@ export async function requestReview(
   }
 
   try {
-    const { stdout } = await execFileAsync('gh', [
+    const { stdout } = await githubClient.exec([
       'pr', 'view', String(prNumber),
       '--repo', repo,
       '--json', 'title,state,additions,deletions,files',
-    ], { encoding: 'utf-8' });
+    ]);
 
     let pr: unknown;
     try {
