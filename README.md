@@ -25,7 +25,7 @@ CEO (you)
                 └─ Engineers (parallel) → write code, open PRs
 ```
 
-No agents to configure. No prompt chains to debug. One command, one config file.
+No agents to configure. No prompt chains to debug. One command.
 
 ## What It Does
 
@@ -36,6 +36,7 @@ No agents to configure. No prompt chains to debug. One command, one config file.
 - **Budget controls** &mdash; Per-layer and total spending limits. The system stops when the budget runs out, not when your wallet does.
 - **Terminal UI** &mdash; Real-time org chart, activity feed, issue tracker, and cost dashboard. Or run headless for CI/automation.
 - **Session persistence** &mdash; Save state, resume later. Agent context carries over via Claude session IDs.
+- **Zero-config auto-discovery** &mdash; Just `cd` into any git repo and run `echelon`. It detects your project and gets you started.
 
 ## Prerequisites
 
@@ -57,15 +58,57 @@ cd echelon
 npm install
 npm run build
 
-# Link globally (optional — makes `echelon` available anywhere)
+# Link globally (makes `echelon` available anywhere)
 npm link
 ```
 
 ## Quick Start
 
-### 1. Initialize
+### Just run it
 
-Run the setup wizard from inside your project repo:
+Navigate to any git repo and run:
+
+```bash
+cd ~/projects/my-app
+echelon
+```
+
+**First time?** Echelon auto-detects your git remote and offers a quick setup:
+
+```
+No config found. Detected: your-org/my-app
+Run quick setup? [Y/n]
+
+Approval mode [destructive/all/none] (destructive):
+
+  ✓ Config written to /Users/you/projects/my-app/echelon.config.json
+```
+
+One question, one file, and the TUI launches immediately. That's it.
+
+**Already set up?** Echelon finds your config automatically and launches the TUI. No flags needed.
+
+### Headless mode
+
+Run a directive without the TUI &mdash; great for CI, scripts, or quick one-offs:
+
+```bash
+echelon -d "Add input validation to all API endpoints" --headless
+```
+
+If no config exists, Echelon generates sensible defaults in-memory and runs immediately (no file written). You'll see a note to run `echelon init` to customize.
+
+### Dry run
+
+See what Echelon *would* do without any side effects:
+
+```bash
+echelon -d "Refactor auth into a service layer" --dry-run
+```
+
+### Full setup wizard
+
+For fine-grained control over models, budgets, and safety settings:
 
 ```bash
 echelon init
@@ -77,33 +120,29 @@ This walks you through:
 - Model selection per management layer
 - Budget and safety configuration
 
-Outputs `echelon.config.json` in your project root.
+### Explicit config path
 
-### 2. Dry Run
-
-See what Echelon *would* do without side effects:
+For non-standard config locations or multi-project setups:
 
 ```bash
-echelon -c echelon.config.json -d "analyze the codebase and suggest improvements" --dry-run
+echelon --config ~/configs/my-project.json
 ```
 
-### 3. Headless Run
+## Config Discovery
 
-Execute a safe, read-only directive:
+When you run `echelon` without `--config`, it searches for `echelon.config.json` in this order:
 
-```bash
-echelon -c echelon.config.json -d "list the top 3 architectural improvements" --headless
-```
+1. **Current directory** &mdash; `./echelon.config.json`
+2. **Git root** &mdash; If you're in a subdirectory, checks the repo root
+3. **Global config** &mdash; `~/.echelon/configs/<repo-name>.json`
 
-### 4. Launch the TUI
+If no config is found:
 
-Full interactive mode with real-time dashboard:
-
-```bash
-echelon -c echelon.config.json
-```
-
-Type your directive, watch it cascade through the org chart, approve actions as they surface.
+| Context | Behavior |
+|---------|----------|
+| **Interactive terminal** | Prompts to run quick setup (one question, writes config, launches TUI) |
+| **Headless / non-TTY** | Generates in-memory defaults and runs (no file written) |
+| **Not a git repo** | Prints error, suggests `--config` flag |
 
 ## How It Works
 
@@ -132,7 +171,7 @@ Each management layer (1-3) is a Claude Code headless session. They reason in na
 }
 ```
 
-Engineers (Layer 4) use [Ralphy](https://github.com/Venin-Client-Systems/echelon/tree/main/ralphy) — a parallel code execution engine that processes GitHub issues in isolated git worktrees, one branch per task, automatic PR creation.
+Engineers (Layer 4) use [Cheenoski](https://github.com/Venin-Client-Systems/echelon/tree/main/ralphy) &mdash; a parallel code execution engine that processes GitHub issues in isolated git worktrees, one branch per task, automatic PR creation.
 
 ### Approval Modes
 
@@ -140,7 +179,7 @@ Engineers (Layer 4) use [Ralphy](https://github.com/Venin-Client-Systems/echelon
 |------|----------|
 | `destructive` (default) | CEO approves issue creation, code execution, and branch creation |
 | `all` | CEO approves every action |
-| `none` | Fully autonomous — no human approval required |
+| `none` | Fully autonomous &mdash; no human approval required |
 
 ### Actions
 
@@ -148,7 +187,7 @@ Engineers (Layer 4) use [Ralphy](https://github.com/Venin-Client-Systems/echelon
 |--------|-----|------|
 | `update_plan` | 2IC, Eng Lead | Update strategic plan with workstreams |
 | `create_issues` | Team Lead | Create GitHub issues via `gh` |
-| `invoke_ralphy` | Team Lead | Start parallel code execution |
+| `invoke_cheenoski` | Team Lead | Start parallel code execution |
 | `create_branch` | Eng Lead | Cut a new git branch |
 | `request_review` | Team Lead | Request PR review |
 | `request_info` | Any layer | Ask another layer a question |
@@ -180,6 +219,17 @@ Engineers (Layer 4) use [Ralphy](https://github.com/Venin-Client-Systems/echelon
 }
 ```
 
+All fields except `project.repo` and `project.path` have defaults. When auto-discovery generates an in-memory config, it uses:
+
+| Field | Default |
+|-------|---------|
+| `layers.*.model` | `sonnet` |
+| `layers.*.maxBudgetUsd` | `5.0` |
+| `engineers.maxParallel` | `3` |
+| `approvalMode` | `destructive` |
+| `maxTotalBudgetUsd` | `50.0` |
+| `baseBranch` | `main` |
+
 ### Models
 
 | Model | Best For | Cost | Default Turns |
@@ -196,21 +246,48 @@ Each layer's `maxTurns` can be overridden in the config. More turns = more file 
 Usage: echelon [options] [command]
 
 Options:
-  -c, --config <path>          Path to echelon.config.json
+  -c, --config <path>          Path to echelon.config.json (auto-discovered if omitted)
   -d, --directive <text>       CEO directive to execute
   --headless                   Run without TUI (headless mode)
   --dry-run                    Show planned cascade without executing
   --resume                     Resume the most recent session
   -v, --verbose                Enable debug logging
   --approval-mode <mode>       Override approval mode (destructive, all, none)
+  --telegram                   Start in Telegram bot mode
   -V, --version                Output version number
   -h, --help                   Display help
 
 Commands:
-  init                         Interactive config generator
+  run [options]                Run the orchestrator (default)
+  init                         Interactive config generator (full wizard)
   sessions list                List all saved sessions
   sessions prune               Delete completed/failed sessions
   sessions delete <id>         Delete a specific session
+```
+
+### Common Workflows
+
+```bash
+# First time — auto-detects repo, quick setup, launches TUI
+echelon
+
+# Give a directive interactively via TUI
+echelon
+
+# Headless one-liner
+echelon -d "Fix all TODO comments in src/" --headless
+
+# Dry run to preview the cascade
+echelon -d "Add rate limiting to API" --dry-run
+
+# Full auto — no approval prompts
+echelon -d "Add unit tests" --headless --approval-mode none
+
+# Resume where you left off
+echelon --resume
+
+# Explicit config
+echelon --config path/to/echelon.config.json
 ```
 
 ### TUI Commands
@@ -250,8 +327,8 @@ Once inside the TUI, type these at the CEO prompt:
 
 Sessions are saved to `~/.echelon/sessions/<project-timestamp>/`:
 
-- `state.json` — Full state (agent sessions, messages, issues, costs)
-- `transcript.md` — Human-readable activity log
+- `state.json` &mdash; Full state (agent sessions, messages, issues, costs)
+- `transcript.md` &mdash; Human-readable activity log
 
 Resume your last session:
 
@@ -259,15 +336,15 @@ Resume your last session:
 echelon --resume
 ```
 
-Agent context carries over — Claude sessions are resumed with `claude -r <session-id>`, so the AI remembers what it was doing.
+Agent context carries over &mdash; Claude sessions are resumed with `claude -r <session-id>`, so the AI remembers what it was doing.
 
 ## Architecture
 
 ```
 src/
-  index.ts                    # Entry point — routes to TUI or headless
+  index.ts                    # Entry point — auto-discovery, routes to TUI or headless
   cli.ts                      # Commander arg parsing
-  commands/init.ts            # Setup wizard
+  commands/init.ts            # Setup wizard + quick init
 
   core/
     orchestrator.ts           # Main hierarchical cascade loop
@@ -280,7 +357,7 @@ src/
 
   actions/
     github-issues.ts          # gh issue create/update/close
-    ralphy.ts                 # Invoke Ralphy as subprocess
+    ralphy.ts                 # Invoke Cheenoski as subprocess
     git.ts                    # Branch management
     review.ts                 # PR review
 
@@ -298,20 +375,21 @@ src/
     types.ts                  # Zod schemas for config, actions, state
     paths.ts                  # Atomic JSON writes
     logger.ts                 # Structured logging
-    config.ts                 # Config loader/validator
+    config.ts                 # Config loader, auto-discovery, default generation
+    git-detect.ts             # Git remote/root/branch detection
     transcript.ts             # Markdown transcript writer
     prompts.ts                # System prompts for each layer
 
-ralphy/                       # Bundled parallel execution engine
+ralphy/                       # Bundled parallel execution engine (Cheenoski)
 ```
 
 ## Contributing
 
-Issues and PRs are welcome. This is early-stage software — expect rough edges.
+Issues and PRs are welcome. This is early-stage software &mdash; expect rough edges.
 
 ```bash
 # Development
-npm run dev -- -c echelon.config.json --headless -d "your directive"
+npm run dev -- -d "your directive" --headless
 
 # Type checking
 npm run typecheck
