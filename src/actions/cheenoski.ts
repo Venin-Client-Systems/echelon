@@ -3,8 +3,8 @@ import type { EchelonConfig, EchelonState } from '../lib/types.js';
 import { CheenoskiRunner } from '../cheenoski/index.js';
 import { logger } from '../lib/logger.js';
 
-/** Active Cheenoski runners (keyed by label) for kill support */
-const activeRunners = new Map<string, CheenoskiRunner>();
+/** Active Cheenoski runners and their run promises (keyed by label) */
+const activeRunners = new Map<string, { runner: CheenoskiRunner; runPromise: Promise<void> }>();
 
 /**
  * Invoke Cheenoski for a label.
@@ -17,19 +17,23 @@ export function invokeCheenoski(
   bus: MessageBus,
   onProgress?: (line: string) => void,
 ): { kill: () => void } {
-  // If a runner already exists for this label, kill it first
+  // If a runner already exists for this label, prevent concurrent invocation
   const existing = activeRunners.get(label);
   if (existing) {
-    logger.warn(`Killing existing Cheenoski runner for label "${label}" before starting new one`);
-    existing.kill();
-    activeRunners.delete(label);
+    logger.warn(`Runner already active for label "${label}" — ignoring duplicate invocation. Kill the existing runner first if needed.`);
+    return {
+      kill: () => {
+        existing.runner.kill();
+        logger.info(`Killed existing runner for ${label}`);
+      },
+    };
   }
 
   const runner = new CheenoskiRunner(config, bus);
-  activeRunners.set(label, runner);
 
   // Run asynchronously — don't await in the action executor
-  runner.run(label, maxParallel)
+  // Track the run promise so we can prevent concurrent invocations
+  const runPromise = runner.run(label, maxParallel)
     .then((state) => {
       onProgress?.(`[DONE] Cheenoski ${label}: ${state.completedCount}/${state.totalIssues} succeeded`);
       logger.info(`Cheenoski completed for ${label}`, {
@@ -44,17 +48,20 @@ export function invokeCheenoski(
       logger.error(`Cheenoski failed for ${label}`, { error: msg });
     })
     .finally(() => {
-      // Only delete if this runner is still the active one for the label
-      if (activeRunners.get(label) === runner) {
+      // Clean up when run completes (success or failure)
+      const current = activeRunners.get(label);
+      if (current?.runner === runner) {
         activeRunners.delete(label);
       }
     });
 
+  activeRunners.set(label, { runner, runPromise });
+
   return {
     kill: () => {
       runner.kill();
-      // Only delete if this runner is still the active one for the label
-      if (activeRunners.get(label) === runner) {
+      const current = activeRunners.get(label);
+      if (current?.runner === runner) {
         activeRunners.delete(label);
       }
       logger.info(`Killed Cheenoski runner for ${label}`);
@@ -64,7 +71,7 @@ export function invokeCheenoski(
 
 /** Kill all active Cheenoski runners */
 export function killAllCheenoski(): void {
-  for (const [label, runner] of activeRunners) {
+  for (const [label, { runner }] of activeRunners) {
     runner.kill();
     logger.info(`Killed Cheenoski runner: ${label}`);
   }
