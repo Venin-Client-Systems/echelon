@@ -1,14 +1,27 @@
 import { z } from 'zod';
+import type { CheenoskiEvent } from '../cheenoski/types.js';
+import { CheenoskiEngineConfigSchema } from '../cheenoski/types.js';
 
 // --- Config Schemas ---
 
-/** Default max turns by model — haiku needs more turns (less per turn) */
+/**
+ * Default maximum turns by model.
+ *
+ * Haiku needs more turns (produces less output per turn) compared to Opus/Sonnet.
+ *
+ * @category Configuration
+ */
 export const DEFAULT_MAX_TURNS: Record<string, number> = {
   opus: 5,
   sonnet: 8,
   haiku: 12,
 };
 
+/**
+ * Configuration schema for a single layer (2IC, Eng Lead, or Team Lead).
+ *
+ * @category Configuration
+ */
 export const LayerConfigSchema = z.object({
   model: z.enum(['opus', 'sonnet', 'haiku']).default('sonnet'),
   maxBudgetUsd: z.number().positive().default(5.0),
@@ -17,18 +30,47 @@ export const LayerConfigSchema = z.object({
   timeoutMs: z.number().positive().default(300_000),
 });
 
+/**
+ * Project configuration schema.
+ *
+ * Defines the target repository and base branch for the orchestrator.
+ *
+ * @category Configuration
+ */
 export const ProjectConfigSchema = z.object({
   repo: z.string().regex(/^[^/]+\/[^/]+$/, 'Must be owner/repo format'),
   path: z.string(),
   baseBranch: z.string().default('main'),
 });
 
-export const EngineersConfigSchema = z.object({
+export const EngineersConfigSchema = CheenoskiEngineConfigSchema;
+
+/** @deprecated Use EngineersConfigSchema (now powered by CheenoskiEngineConfigSchema) */
+export const LegacyEngineersConfigSchema = z.object({
   maxParallel: z.number().int().positive().default(3),
   createPr: z.boolean().default(true),
   prDraft: z.boolean().default(true),
 });
 
+export const TelegramHealthConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  port: z.number().int().min(1).max(65535).default(3000),
+  bindAddress: z.string().default('0.0.0.0'),
+});
+
+export const TelegramConfigSchema = z.object({
+  token: z.string(),
+  allowedUserIds: z.array(z.number().int()).default([]),
+  health: TelegramHealthConfigSchema.optional(),
+});
+/**
+ * Root Echelon configuration schema.
+ *
+ * Defines all settings for the orchestrator: project, layers, approval mode,
+ * budget limits, and optional Telegram integration.
+ *
+ * @category Configuration
+ */
 export const EchelonConfigSchema = z.object({
   project: ProjectConfigSchema,
   layers: z.object({
@@ -39,20 +81,48 @@ export const EchelonConfigSchema = z.object({
   engineers: EngineersConfigSchema.default({}),
   approvalMode: z.enum(['destructive', 'all', 'none']).default('destructive'),
   maxTotalBudgetUsd: z.number().positive().default(50.0),
+  maxCascadeDurationMs: z.number().positive().default(1_800_000),
+  telegram: TelegramConfigSchema.optional(),
+  billing: z.enum(['api', 'max']).default('api'),
 });
 
+/** @category Configuration */
 export type EchelonConfig = z.infer<typeof EchelonConfigSchema>;
+/** @category Configuration */
 export type LayerConfig = z.infer<typeof LayerConfigSchema>;
+/** @category Configuration */
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
+/** @category Configuration */
 export type EngineersConfig = z.infer<typeof EngineersConfigSchema>;
+/** @category Configuration */
+export type TelegramHealthConfig = z.infer<typeof TelegramHealthConfigSchema>;
+/** @category Configuration */
+export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
 
 // --- Layer Types ---
 
+/**
+ * Layer identifier (excludes CEO and engineers).
+ * @category Types
+ */
 export type LayerId = '2ic' | 'eng-lead' | 'team-lead';
+
+/**
+ * All agent roles in the hierarchy.
+ * @category Types
+ */
 export type AgentRole = LayerId | 'ceo' | 'engineer';
 
+/**
+ * Hierarchical order of agents (CEO → 2IC → Eng Lead → Team Lead → Engineer).
+ * @category Types
+ */
 export const LAYER_ORDER: readonly AgentRole[] = ['ceo', '2ic', 'eng-lead', 'team-lead', 'engineer'] as const;
 
+/**
+ * Human-readable labels for each agent role.
+ * @category Types
+ */
 export const LAYER_LABELS: Record<AgentRole, string> = {
   ceo: 'CEO',
   '2ic': '2IC',
@@ -63,6 +133,10 @@ export const LAYER_LABELS: Record<AgentRole, string> = {
 
 // --- Action Schemas ---
 
+/**
+ * Schema for a GitHub issue payload.
+ * @category Actions
+ */
 export const IssuePayloadSchema = z.object({
   title: z.string(),
   body: z.string(),
@@ -70,11 +144,22 @@ export const IssuePayloadSchema = z.object({
   assignee: z.string().optional(),
 });
 
+/**
+ * Action to create GitHub issues.
+ * @category Actions
+ */
 export const CreateIssuesActionSchema = z.object({
   action: z.literal('create_issues'),
   issues: z.array(IssuePayloadSchema).min(1),
 });
 
+export const InvokeCheenoskiActionSchema = z.object({
+  action: z.literal('invoke_cheenoski'),
+  label: z.string(),
+  maxParallel: z.number().int().positive().optional(),
+});
+
+/** @deprecated Use InvokeCheenoskiActionSchema */
 export const InvokeRalphyActionSchema = z.object({
   action: z.literal('invoke_ralphy'),
   label: z.string(),
@@ -111,8 +196,17 @@ export const CreateBranchActionSchema = z.object({
   from: z.string().optional(),
 });
 
+/**
+ * Discriminated union of all action types.
+ *
+ * Actions are structured JSON blocks emitted by agents and parsed by the action parser.
+ * Each action type has a unique `action` field for type narrowing.
+ *
+ * @category Actions
+ */
 export const ActionSchema = z.discriminatedUnion('action', [
   CreateIssuesActionSchema,
+  InvokeCheenoskiActionSchema,
   InvokeRalphyActionSchema,
   UpdatePlanActionSchema,
   RequestInfoActionSchema,
@@ -121,11 +215,29 @@ export const ActionSchema = z.discriminatedUnion('action', [
   CreateBranchActionSchema,
 ]);
 
+/**
+ * Union type of all action objects.
+ * @category Actions
+ */
 export type Action = z.infer<typeof ActionSchema>;
+
+/**
+ * GitHub issue payload type.
+ * @category Actions
+ */
 export type IssuePayload = z.infer<typeof IssuePayloadSchema>;
 
 // --- Messages ---
 
+/**
+ * Message sent between layers in the hierarchy.
+ *
+ * Messages contain narrative content, extracted actions, cost tracking,
+ * and timing metadata. They are stored in the MessageBus history and
+ * persisted to session state.
+ *
+ * @category Types
+ */
 export interface LayerMessage {
   id: string;
   from: AgentRole;
@@ -139,8 +251,19 @@ export interface LayerMessage {
 
 // --- Agent State ---
 
+/**
+ * Status of an agent during the cascade.
+ * @category Types
+ */
 export type AgentStatus = 'idle' | 'thinking' | 'executing' | 'waiting' | 'error' | 'done';
 
+/**
+ * Runtime state of a single agent.
+ *
+ * Tracks session ID, cost, turns, and errors for each layer.
+ *
+ * @category Types
+ */
 export interface AgentState {
   role: AgentRole;
   status: AgentStatus;
@@ -152,6 +275,14 @@ export interface AgentState {
 
 // --- Echelon State (persisted) ---
 
+/**
+ * Orchestrator state persisted to disk.
+ *
+ * Saved to `~/.echelon/sessions/<project-timestamp>/state.json` after each
+ * agent turn. Enables session resumption with `--resume`.
+ *
+ * @category Types
+ */
 export interface EchelonState {
   sessionId: string;
   projectRepo: string;
@@ -204,7 +335,9 @@ export interface CliOptions {
   dryRun: boolean;
   resume: boolean;
   verbose: boolean;
+  telegram: boolean;
   approvalMode?: EchelonConfig['approvalMode'];
+  yolo: boolean;
 }
 
 // --- Events ---
@@ -216,9 +349,10 @@ export type EchelonEvent =
   | { type: 'action_executed'; action: Action; result: string }
   | { type: 'action_rejected'; approval: PendingApproval; reason: string }
   | { type: 'issue_created'; issue: TrackedIssue }
-  | { type: 'ralphy_progress'; label: string; line: string }
+  | { type: 'cheenoski_progress'; label: string; line: string }
   | { type: 'error'; role: AgentRole; error: string }
   | { type: 'cost_update'; role: AgentRole; costUsd: number; totalUsd: number }
   | { type: 'state_saved'; path: string }
   | { type: 'cascade_complete'; directive: string }
-  | { type: 'shutdown'; reason: string };
+  | { type: 'shutdown'; reason: string }
+  | CheenoskiEvent;

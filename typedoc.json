@@ -1,0 +1,29 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/index.ts"],
+  "out": "docs/api",
+  "name": "Echelon API Documentation",
+  "includeVersion": true,
+  "readme": "README.md",
+  "excludeExternals": true,
+  "excludePrivate": true,
+  "excludeProtected": false,
+  "skipErrorChecking": false,
+  "plugin": [],
+  "tsconfig": "tsconfig.json",
+  "categorizeByGroup": true,
+  "categoryOrder": [
+    "Core",
+    "Configuration",
+    "Actions",
+    "Types",
+    "Utilities",
+    "*"
+  ],
+  "navigation": {
+    "includeCategories": true,
+    "includeGroups": true
+  },
+  "searchInComments": true,
+  "githubPages": true
+}

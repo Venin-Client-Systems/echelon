@@ -6,16 +6,44 @@ import type {
 } from '../lib/types.js';
 import type { MessageBus } from './message-bus.js';
 import { createIssues } from '../actions/github-issues.js';
-import { invokeRalphy } from '../actions/ralphy.js';
+import { invokeCheenoski } from '../actions/cheenoski.js';
 import { createBranch } from '../actions/git.js';
 import { requestReview } from '../actions/review.js';
 
 /** Actions that require CEO approval in "destructive" mode */
-const DESTRUCTIVE_ACTIONS = new Set(['create_issues', 'invoke_ralphy', 'create_branch']);
+const DESTRUCTIVE_ACTIONS = new Set(['create_issues', 'invoke_cheenoski', 'invoke_ralphy', 'create_branch']);
 
+/**
+ * Executes or queues actions based on approval mode.
+ *
+ * The ActionExecutor manages action dispatch and approval queue management.
+ * It supports three approval modes:
+ * - `none`: Auto-execute all actions
+ * - `destructive`: Require approval for create_issues, invoke_cheenoski, create_branch
+ * - `all`: Require approval for every action
+ *
+ * @category Core
+ * @example
+ * ```typescript
+ * const executor = new ActionExecutor(config, state, bus);
+ *
+ * // Execute or queue an action
+ * const result = await executor.executeOrQueue(
+ *   { action: 'create_issues', issues: [...] },
+ *   'team-lead',
+ *   false
+ * );
+ *
+ * // Approve pending actions
+ * if (!result.executed) {
+ *   const approvalId = extractApprovalId(result.result);
+ *   await executor.approve(approvalId);
+ * }
+ * ```
+ */
 export class ActionExecutor {
   private pendingApprovals: Map<string, PendingApproval> = new Map();
-  private ralphyKillHandles: Array<{ label: string; kill: () => void }> = [];
+  private cheenoskiKillHandles: Array<{ label: string; kill: () => void }> = [];
 
   constructor(
     private config: EchelonConfig,
@@ -23,7 +51,12 @@ export class ActionExecutor {
     private bus: MessageBus,
   ) {}
 
-  /** Check if an action needs CEO approval */
+  /**
+   * Check if an action requires CEO approval based on config.approvalMode.
+   *
+   * @param action - The action to check
+   * @returns true if approval is required
+   */
   needsApproval(action: Action): boolean {
     switch (this.config.approvalMode) {
       case 'none': return false;
@@ -33,7 +66,17 @@ export class ActionExecutor {
     }
   }
 
-  /** Execute or queue an action */
+  /**
+   * Execute an action immediately or queue it for approval.
+   *
+   * In dry-run mode, actions are logged but not executed.
+   * If approval is required, the action is queued and an approval ID is returned.
+   *
+   * @param action - The action to execute
+   * @param from - The agent role requesting execution
+   * @param dryRun - If true, log the action without executing
+   * @returns Object with executed flag and result message
+   */
   async executeOrQueue(
     action: Action,
     from: AgentRole,
@@ -55,7 +98,14 @@ export class ActionExecutor {
     return this.execute(action);
   }
 
-  /** Execute an action immediately */
+  /**
+   * Execute an action immediately without approval checks.
+   *
+   * Emits an `action_executed` event on success or logs errors on failure.
+   *
+   * @param action - The action to execute
+   * @returns Object with executed flag and result message
+   */
   async execute(action: Action): Promise<{ executed: boolean; result: string }> {
     try {
       const result = await this.dispatch(action);
@@ -72,14 +122,13 @@ export class ActionExecutor {
   private async dispatch(action: Action): Promise<string> {
     switch (action.action) {
       case 'create_issues': {
-        const numbers = await createIssues(action.issues, this.config.project.repo);
-        for (let i = 0; i < numbers.length; i++) {
-          const issue = action.issues[i];
+        const created = await createIssues(action.issues, this.config.project.repo);
+        for (const ci of created) {
           this.state.issues.push({
-            number: numbers[i],
-            title: issue.title,
+            number: ci.number,
+            title: ci.title,
             state: 'open',
-            labels: issue.labels,
+            labels: ci.labels,
             assignedEngineer: null,
             prNumber: null,
           });
@@ -88,18 +137,23 @@ export class ActionExecutor {
             issue: this.state.issues[this.state.issues.length - 1],
           });
         }
-        return `Created issues: ${numbers.map(n => `#${n}`).join(', ')}`;
+        if (created.length === 0) {
+          return `No issues created (${action.issues.length} attempted)`;
+        }
+        return `Created ${created.length}/${action.issues.length} issues: ${created.map(c => `#${c.number}`).join(', ')}`;
       }
 
+      case 'invoke_cheenoski':
       case 'invoke_ralphy': {
-        const handle = invokeRalphy(
+        const handle = invokeCheenoski(
           action.label,
           this.config,
           action.maxParallel,
-          (line) => this.bus.emitEchelon({ type: 'ralphy_progress', label: action.label, line }),
+          this.bus,
+          (line) => this.bus.emitEchelon({ type: 'cheenoski_progress', label: action.label, line }),
         );
-        this.ralphyKillHandles.push({ label: action.label, kill: handle.kill });
-        return `Ralphy invoked for label: ${action.label}`;
+        this.cheenoskiKillHandles.push({ label: action.label, kill: handle.kill });
+        return `Cheenoski invoked for label: ${action.label}`;
       }
 
       case 'create_branch': {
@@ -140,7 +194,12 @@ export class ActionExecutor {
     return approval;
   }
 
-  /** CEO approves a pending action */
+  /**
+   * Approve and execute a pending action.
+   *
+   * @param approvalId - The unique ID of the pending approval
+   * @returns Execution result
+   */
   async approve(approvalId: string): Promise<{ executed: boolean; result: string }> {
     const approval = this.pendingApprovals.get(approvalId);
     if (!approval) return { executed: false, result: `No pending approval: ${approvalId}` };
@@ -148,7 +207,12 @@ export class ActionExecutor {
     return this.execute(approval.action);
   }
 
-  /** CEO rejects a pending action */
+  /**
+   * Reject a pending action and emit an action_rejected event.
+   *
+   * @param approvalId - The unique ID of the pending approval
+   * @param reason - Human-readable rejection reason
+   */
   reject(approvalId: string, reason: string): void {
     const approval = this.pendingApprovals.get(approvalId);
     if (!approval) return;
@@ -156,7 +220,14 @@ export class ActionExecutor {
     this.bus.emitEchelon({ type: 'action_rejected', approval, reason });
   }
 
-  /** Approve all pending actions — snapshot keys first to avoid mutation during iteration */
+  /**
+   * Approve all pending actions in sequence.
+   *
+   * Snapshots the approval IDs first to avoid mutation during iteration.
+   * Useful for headless/YOLO mode or batch approval.
+   *
+   * @returns Array of execution results
+   */
   async approveAll(): Promise<string[]> {
     const ids = [...this.pendingApprovals.keys()];
     const results: string[] = [];
@@ -167,21 +238,29 @@ export class ActionExecutor {
     return results;
   }
 
-  /** Get all pending approvals */
+  /**
+   * Get all pending approvals awaiting CEO decision.
+   *
+   * @returns Array of pending approval objects
+   */
   getPending(): PendingApproval[] {
     return [...this.pendingApprovals.values()];
   }
 
-  /** Kill all running Ralphy subprocesses */
-  killAllRalphy(): void {
-    for (const handle of this.ralphyKillHandles) {
+  /**
+   * Terminate all running Cheenoski subprocesses.
+   *
+   * Called during graceful shutdown or when aborting a cascade.
+   */
+  killAll(): void {
+    for (const handle of this.cheenoskiKillHandles) {
       try {
         handle.kill();
       } catch {
-        logger.debug(`Failed to kill Ralphy process: ${handle.label}`);
+        logger.debug(`Failed to kill Cheenoski process: ${handle.label}`);
       }
     }
-    this.ralphyKillHandles = [];
+    this.cheenoskiKillHandles = [];
   }
 }
 
@@ -189,8 +268,10 @@ function describeAction(action: Action): string {
   switch (action.action) {
     case 'create_issues':
       return `Create ${action.issues.length} issue(s): ${action.issues.map(i => i.title).join(', ')}`;
+    case 'invoke_cheenoski':
+      return `Run Cheenoski for label: ${action.label}`;
     case 'invoke_ralphy':
-      return `Run Ralphy for label: ${action.label}`;
+      return `Run Cheenoski for label: ${action.label}`;
     case 'update_plan':
       return `Update plan (${action.workstreams?.length ?? 0} workstreams)`;
     case 'request_info':

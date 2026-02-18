@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { logger } from '../lib/logger.js';
 import type { ClaudeJsonOutput } from '../lib/types.js';
 import { DEFAULT_MAX_TURNS } from '../lib/types.js';
+import { withErrorBoundary, CircuitBreaker } from './error-boundaries.js';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_TIMEOUT_MS = 600_000; // 10 min — management agents may think long
@@ -10,6 +11,10 @@ const SIGKILL_DELAY_MS = 5_000; // 5s grace after SIGTERM before SIGKILL
 
 // Resolve claude binary path once at startup
 let claudeBin: string | null = null;
+
+// Global circuit breaker for agent spawn/resume operations
+// Shared across all agents to prevent cascading failures
+const agentCircuitBreaker = new CircuitBreaker(5, 60000);
 
 async function getClaudeBin(): Promise<string> {
   if (claudeBin) return claudeBin;
@@ -29,6 +34,7 @@ export interface SpawnOptions {
   maxTurns?: number;
   timeoutMs?: number;
   cwd?: string;
+  yolo?: boolean;
 }
 
 export interface AgentResponse {
@@ -134,55 +140,97 @@ export async function spawnAgent(
   prompt: string,
   opts: SpawnOptions,
 ): Promise<AgentResponse> {
-  const start = Date.now();
-  const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS[opts.model] ?? 8;
-  const args = [
-    '-p', prompt,
-    '--output-format', 'json',
-    '--model', opts.model,
-    '--max-turns', String(maxTurns),
-    '--append-system-prompt', opts.systemPrompt,
-  ];
+  return withErrorBoundary(
+    async () => {
+      const start = Date.now();
+      const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS[opts.model] ?? 8;
+      const args = [
+        '-p', prompt,
+        '--output-format', 'json',
+        '--model', opts.model,
+        '--max-turns', String(maxTurns),
+        '--append-system-prompt', opts.systemPrompt,
+      ];
 
-  if (opts.maxBudgetUsd > 0) {
-    args.push('--max-budget-usd', opts.maxBudgetUsd.toString());
-  }
+      if (opts.maxBudgetUsd > 0) {
+        args.push('--max-budget-usd', opts.maxBudgetUsd.toString());
+      }
 
-  logger.debug('Spawning agent', { model: opts.model, maxTurns });
-  const stdout = await runClaude(args, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.cwd);
-  const output = parseOutput(stdout);
+      if (opts.yolo) {
+        args.push('--dangerously-skip-permissions');
+      }
 
-  return {
-    content: output.result,
-    sessionId: output.session_id,
-    costUsd: output.total_cost_usd ?? 0,
-    durationMs: Date.now() - start,
-  };
+      logger.debug('Spawning agent', { model: opts.model, maxTurns });
+      const stdout = await runClaude(args, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.cwd);
+      const output = parseOutput(stdout);
+
+      if (output.is_error === true) {
+        throw new Error(`Claude agent error: ${output.result}`);
+      }
+
+      return {
+        content: output.result,
+        sessionId: output.session_id,
+        costUsd: output.total_cost_usd ?? 0,
+        durationMs: Date.now() - start,
+      };
+    },
+    `spawnAgent(${opts.model})`,
+    {
+      maxRetries: 3,
+      baseDelayMs: 1000,
+      maxDelayMs: 32000,
+    },
+    agentCircuitBreaker,
+  );
 }
 
 /** Resume an existing Claude session */
 export async function resumeAgent(
   sessionId: string,
   prompt: string,
-  opts: { maxTurns?: number; timeoutMs?: number; cwd?: string },
+  opts: { maxTurns?: number; timeoutMs?: number; cwd?: string; maxBudgetUsd?: number; yolo?: boolean },
 ): Promise<AgentResponse> {
-  const start = Date.now();
-  const maxTurns = opts.maxTurns ?? 8;
-  const args = [
-    '-r', sessionId,
-    '-p', prompt,
-    '--output-format', 'json',
-    '--max-turns', String(maxTurns),
-  ];
+  return withErrorBoundary(
+    async () => {
+      const start = Date.now();
+      const maxTurns = opts.maxTurns ?? 8;
+      const args = [
+        '-r', sessionId,
+        '-p', prompt,
+        '--output-format', 'json',
+        '--max-turns', String(maxTurns),
+      ];
 
-  logger.debug('Resuming agent', { sessionId: sessionId.slice(0, 8), maxTurns });
-  const stdout = await runClaude(args, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.cwd);
-  const output = parseOutput(stdout);
+      if (opts.maxBudgetUsd != null && opts.maxBudgetUsd > 0) {
+        args.push('--max-budget-usd', String(opts.maxBudgetUsd));
+      }
 
-  return {
-    content: output.result,
-    sessionId: output.session_id,
-    costUsd: output.total_cost_usd ?? 0,
-    durationMs: Date.now() - start,
-  };
+      if (opts.yolo) {
+        args.push('--dangerously-skip-permissions');
+      }
+
+      logger.debug('Resuming agent', { sessionId: sessionId.slice(0, 8), maxTurns });
+      const stdout = await runClaude(args, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.cwd);
+      const output = parseOutput(stdout);
+
+      if (output.is_error === true) {
+        throw new Error(`Claude agent error: ${output.result}`);
+      }
+
+      return {
+        content: output.result,
+        sessionId: output.session_id,
+        costUsd: output.total_cost_usd ?? 0,
+        durationMs: Date.now() - start,
+      };
+    },
+    `resumeAgent(${sessionId.slice(0, 8)})`,
+    {
+      maxRetries: 3,
+      baseDelayMs: 1000,
+      maxDelayMs: 32000,
+    },
+    agentCircuitBreaker,
+  );
 }

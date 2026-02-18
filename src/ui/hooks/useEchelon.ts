@@ -84,18 +84,19 @@ export function useEchelon(orchestrator: Orchestrator): EchelonUI {
   // Subscribe to orchestrator events
   useEffect(() => {
     const handler = (event: EchelonEvent) => {
-      switch (event.type) {
-        case 'agent_status':
-          setAgents(prev => ({
-            ...prev,
-            [event.role]: { ...prev[event.role], status: event.status },
-          }));
-          addFeedEntry(
-            LAYER_LABELS[event.role],
-            event.status === 'thinking' ? 'Thinking...' : event.status === 'done' ? 'Done' : event.status,
-            ROLE_COLORS[event.role],
-          );
-          break;
+      try {
+        switch (event.type) {
+          case 'agent_status':
+            setAgents(prev => ({
+              ...prev,
+              [event.role]: { ...prev[event.role], status: event.status },
+            }));
+            addFeedEntry(
+              LAYER_LABELS[event.role],
+              event.status === 'thinking' ? 'Thinking...' : event.status === 'done' ? 'Done' : event.status,
+              ROLE_COLORS[event.role],
+            );
+            break;
 
         case 'message': {
           const label = LAYER_LABELS[event.message.from];
@@ -124,10 +125,41 @@ export function useEchelon(orchestrator: Orchestrator): EchelonUI {
           addFeedEntry('System', `Issue #${event.issue.number}: ${event.issue.title}`, 'green');
           break;
 
-        case 'ralphy_progress':
+        case 'cheenoski_progress':
           addFeedEntry(`Eng:${event.label}`, event.line, 'green');
           break;
 
+
+        case 'cheenoski_slot_fill':
+          addFeedEntry('Cheenoski', `Slot ${event.slot.id}: #${event.slot.issueNumber} (${event.slot.domain}) → ${event.slot.engineName}`, 'cyan');
+          break;
+
+        case 'cheenoski_slot_done': {
+          const ok = event.slot.result?.success ?? false;
+          const dur = event.slot.result?.durationMs ?? 0;
+          addFeedEntry('Cheenoski', `#${event.slot.issueNumber}: ${ok ? 'done' : 'failed'} (${(dur / 1000).toFixed(0)}s)`, ok ? 'green' : 'red');
+          break;
+        }
+
+        case 'cheenoski_dashboard':
+          // skip — too noisy for feed log
+          break;
+
+        case 'cheenoski_merge':
+          addFeedEntry('Cheenoski', `Merge #${event.slot.issueNumber}: ${event.success ? 'ok' : event.error ?? 'unknown error'}`, event.success ? 'green' : 'red');
+          break;
+
+        case 'cheenoski_pr_created':
+          addFeedEntry('Cheenoski', `PR #${event.prNumber} for #${event.slot.issueNumber}: ${event.prUrl}`, 'green');
+          break;
+
+        case 'cheenoski_engine_switch':
+          addFeedEntry('Cheenoski', `#${event.slot.issueNumber}: ${event.from} → ${event.to} (${event.reason})`, 'yellow');
+          break;
+
+        case 'cheenoski_complete':
+          addFeedEntry('Cheenoski', `Complete: ${event.stats.succeeded}/${event.stats.total} succeeded (${(event.stats.durationMs / 1000).toFixed(0)}s)`, 'green');
+          break;
         case 'cost_update':
           // Use absolute totalUsd from event, not accumulated delta
           setTotalCost(event.totalUsd);
@@ -150,12 +182,15 @@ export function useEchelon(orchestrator: Orchestrator): EchelonUI {
           setStatus('paused');
           addFeedEntry('System', 'Session paused', 'yellow');
           break;
+        }
+      } catch (err) {
+        console.error('Event handler error:', err);
       }
     };
 
     orchestrator.bus.onEchelon(handler);
     return () => {
-      orchestrator.bus.removeListener('echelon', handler);
+      orchestrator.bus.offEchelon(handler);
     };
   }, [orchestrator, addFeedEntry]);
 
