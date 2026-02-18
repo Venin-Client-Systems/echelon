@@ -21,14 +21,21 @@ vi.mock('../state.js', async () => {
   };
 });
 
-vi.mock('../../lib/logger.js', () => ({
-  logger: {
+vi.mock('../../lib/logger.js', () => {
+  const createMockLogger = () => ({
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
-  },
-}));
+    errorWithType: vi.fn(),
+    child: vi.fn(function(this: any) { return createMockLogger(); }),
+  });
+
+  return {
+    logger: createMockLogger(),
+    generateCorrelationId: vi.fn(() => 'mock-correlation-id'),
+  };
+});
 
 vi.mock('../../lib/transcript.js', () => ({
   TranscriptWriter: class MockTranscriptWriter {
