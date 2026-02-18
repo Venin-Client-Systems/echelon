@@ -72,14 +72,13 @@ export class ActionExecutor {
   private async dispatch(action: Action): Promise<string> {
     switch (action.action) {
       case 'create_issues': {
-        const numbers = await createIssues(action.issues, this.config.project.repo);
-        for (let i = 0; i < numbers.length; i++) {
-          const issue = action.issues[i];
+        const created = await createIssues(action.issues, this.config.project.repo);
+        for (const ci of created) {
           this.state.issues.push({
-            number: numbers[i],
-            title: issue.title,
+            number: ci.number,
+            title: ci.title,
             state: 'open',
-            labels: issue.labels,
+            labels: ci.labels,
             assignedEngineer: null,
             prNumber: null,
           });
@@ -88,7 +87,10 @@ export class ActionExecutor {
             issue: this.state.issues[this.state.issues.length - 1],
           });
         }
-        return `Created issues: ${numbers.map(n => `#${n}`).join(', ')}`;
+        if (created.length === 0) {
+          return `No issues created (${action.issues.length} attempted)`;
+        }
+        return `Created ${created.length}/${action.issues.length} issues: ${created.map(c => `#${c.number}`).join(', ')}`;
       }
 
       case 'invoke_cheenoski':

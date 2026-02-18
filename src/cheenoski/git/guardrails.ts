@@ -120,7 +120,7 @@ export async function cleanOrphanedWorktrees(repoPath: string): Promise<number> 
 }
 
 /** Post-run audit: check for leftover worktrees, branches, processes */
-export async function postRunAudit(repoPath: string, baseBranch: string): Promise<string[]> {
+export async function postRunAudit(repoPath: string, baseBranch: string, startBranch?: string): Promise<string[]> {
   const warnings: string[] = [];
 
   // Check for leftover worktrees
@@ -129,11 +129,12 @@ export async function postRunAudit(repoPath: string, baseBranch: string): Promis
     warnings.push(`${orphans.length} orphaned worktree(s) found: ${orphans.map(o => basename(o)).join(', ')}`);
   }
 
-  // Check we're back on base branch
+  // Check we're back on the branch we started on (or baseBranch if not tracked)
+  const expectedBranch = startBranch ?? baseBranch;
   try {
     const current = await git(['branch', '--show-current'], repoPath);
-    if (current !== baseBranch) {
-      warnings.push(`Expected to be on ${baseBranch}, but on ${current}`);
+    if (current !== expectedBranch) {
+      warnings.push(`Expected to be on ${expectedBranch}, but on ${current}`);
     }
   } catch { /* ignore */ }
 

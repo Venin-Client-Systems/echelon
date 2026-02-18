@@ -1,3 +1,5 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import type { MessageBus } from '../core/message-bus.js';
 import type { EchelonConfig } from '../lib/types.js';
 import type { SchedulerState } from './types.js';
@@ -6,6 +8,8 @@ import { fetchIssuesByLabel } from './github/issues.js';
 import { preflightChecks, cleanOrphanedWorktrees, postRunAudit } from './git/guardrails.js';
 import { acquireLock, releaseLock, hasConflictingInstance } from './coordination.js';
 import { Scheduler } from './scheduler.js';
+
+const execFileAsync = promisify(execFile);
 
 /**
  * CheenoskiRunner — public API for invoking the engineering layer.
@@ -46,6 +50,15 @@ export class CheenoskiRunner {
     this.registerSignalHandlers();
 
     try {
+      // Record starting branch before doing anything
+      let startBranch: string | undefined;
+      try {
+        const { stdout } = await execFileAsync('git', ['branch', '--show-current'], {
+          cwd: config.project.path, encoding: 'utf-8',
+        });
+        startBranch = stdout.trim();
+      } catch { /* ignore */ }
+
       // Preflight checks
       const preflight = await preflightChecks(config.project.path, config.project.baseBranch);
       if (!preflight.ok) {
@@ -78,8 +91,8 @@ export class CheenoskiRunner {
       this.scheduler = new Scheduler(config, this.bus, label);
       const result = await this.scheduler.run(issues);
 
-      // Post-run audit
-      const warnings = await postRunAudit(config.project.path, config.project.baseBranch);
+      // Post-run audit — pass the branch we started on
+      const warnings = await postRunAudit(config.project.path, config.project.baseBranch, startBranch);
       for (const warning of warnings) {
         logger.warn(`Post-run audit: ${warning}`);
       }

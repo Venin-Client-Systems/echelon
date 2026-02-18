@@ -5,6 +5,12 @@ import type { IssuePayload } from '../lib/types.js';
 
 const execFileAsync = promisify(execFile);
 
+export interface CreatedIssue {
+  number: number;
+  title: string;
+  labels: string[];
+}
+
 /**
  * Ensure labels exist on the repo — create any that are missing.
  */
@@ -22,13 +28,13 @@ async function ensureLabels(labels: string[], repo: string): Promise<void> {
 
 /**
  * Create GitHub issues via the `gh` CLI.
- * Returns an array of issue numbers for successfully created issues.
+ * Returns an array of successfully created issues with their numbers.
  * Continues creating remaining issues even if one fails.
  */
 export async function createIssues(
   issues: IssuePayload[],
   repo: string,
-): Promise<number[]> {
+): Promise<CreatedIssue[]> {
   // Collect all unique labels and ensure they exist
   const allLabels = new Set<string>();
   for (const issue of issues) {
@@ -40,7 +46,7 @@ export async function createIssues(
     await ensureLabels([...allLabels], repo);
   }
 
-  const numbers: number[] = [];
+  const created: CreatedIssue[] = [];
 
   for (const issue of issues) {
     try {
@@ -66,7 +72,7 @@ export async function createIssues(
       const match = output.match(/\/issues\/(\d+)/);
       if (match) {
         const num = parseInt(match[1], 10);
-        numbers.push(num);
+        created.push({ number: num, title: issue.title, labels: issue.labels });
         logger.info(`Created issue #${num}: ${issue.title}`);
       } else {
         logger.warn('Could not parse issue number from gh output', { output });
@@ -78,7 +84,7 @@ export async function createIssues(
     }
   }
 
-  return numbers;
+  return created;
 }
 
 /**
