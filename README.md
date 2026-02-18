@@ -8,7 +8,8 @@
     <a href="#quick-start">Quick Start</a> &middot;
     <a href="#how-it-works">How It Works</a> &middot;
     <a href="#configuration">Configuration</a> &middot;
-    <a href="#cli-reference">CLI Reference</a>
+    <a href="#cli-reference">CLI Reference</a> &middot;
+    <a href="https://venin-client-systems.github.io/echelon/">API Docs</a>
   </p>
 </p>
 
@@ -419,6 +420,24 @@ src/
 ralphy/                       # Bundled parallel execution engine (Cheenoski)
 ```
 
+## Documentation
+
+### API Reference
+
+Full TypeDoc-generated API documentation is available at:
+- **Live docs:** [https://venin-client-systems.github.io/echelon/](https://venin-client-systems.github.io/echelon/)
+
+Generate docs locally:
+```bash
+npm run docs:api
+```
+
+The documentation covers:
+- **Configuration** — `EchelonConfig`, `LayerConfig`, project settings
+- **Core** — `Orchestrator`, `MessageBus`, agent lifecycle
+- **Actions** — All action types and schemas
+- **Types** — Complete type definitions and schemas
+
 ## Contributing
 
 Issues and PRs are welcome. This is early-stage software &mdash; expect rough edges.
@@ -429,6 +448,9 @@ npm run dev -- -d "your directive" --headless
 
 # Type checking
 npm run typecheck
+
+# Generate API docs
+npm run docs:api
 ```
 
 ## License
