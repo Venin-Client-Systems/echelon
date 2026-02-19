@@ -19,14 +19,6 @@ We take the security of Echelon seriously. If you discover a security vulnerabil
 
 **Primary channel:** Email security reports to **security@venin.space**
 
-For sensitive disclosures, you may encrypt your report using our PGP key (optional):
-
-```
------BEGIN PGP PUBLIC KEY BLOCK-----
-(PGP key to be added when available)
------END PGP PUBLIC KEY BLOCK-----
-```
-
 ### What to Include
 
 Please include as much of the following information as possible:
@@ -385,7 +377,7 @@ export async function cleanOrphanedWorktrees(repoPath: string): Promise<number>
 
 For non-security issues, please use [GitHub Issues](https://github.com/Venin-Client-Systems/echelon/issues).
 
-For security concerns, email **security@venin-client-systems.com**.
+For security concerns, email **security@venin.space**.
 
 ---
 
