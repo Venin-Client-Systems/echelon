@@ -5,6 +5,7 @@ import { sessionDir, SESSIONS_DIR } from '../lib/paths.js';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Orchestrator } from '../core/orchestrator.js';
+import type { MetricsAggregator } from './aggregator.js';
 import { logger } from '../lib/logger.js';
 
 /**
@@ -14,6 +15,7 @@ import { logger } from '../lib/logger.js';
  * and metrics before WebSocket streaming begins.
  *
  * @param orchestrator - Running Orchestrator instance
+ * @param aggregator - Optional MetricsAggregator instance for /api/metrics endpoint
  * @returns Express router with API routes
  *
  * @category Dashboard
@@ -24,12 +26,12 @@ import { logger } from '../lib/logger.js';
  * import { createApiRouter } from './dashboard/api.js';
  *
  * const app = express();
- * const router = createApiRouter(orchestrator);
+ * const router = createApiRouter(orchestrator, aggregator);
  * app.use('/api', router);
  * app.listen(3000);
  * ```
  */
-export function createApiRouter(orchestrator: Orchestrator): Router {
+export function createApiRouter(orchestrator: Orchestrator, aggregator?: MetricsAggregator): Router {
   const router = Router();
 
   // Enable CORS for browser access
@@ -177,6 +179,38 @@ export function createApiRouter(orchestrator: Orchestrator): Router {
       const errMsg = err instanceof Error ? err.message : String(err);
       logger.error('Failed to load transcript', { session: id, error: errMsg });
       res.status(500).json({ error: 'Failed to load transcript' });
+    }
+  });
+
+  /**
+   * GET /api/metrics
+   *
+   * Returns pre-computed dashboard metrics from the aggregator.
+   * Metrics are cached and recomputed on state changes, enabling < 10ms response time.
+   *
+   * Response: DashboardMetrics
+   * - costByLayer: Record<AgentRole, number>
+   * - issuesByDomain: Record<string, number>
+   * - issuesByStatus: { open: number, closed: number }
+   * - cascadeTimeline: { timestamp: string, totalCost: number }[]
+   * - activeAgents: AgentRole[]
+   * - totalIssues: number
+   * - totalMessages: number
+   *
+   * Returns 503 if aggregator is not initialized.
+   */
+  router.get('/metrics', (req, res) => {
+    try {
+      if (!aggregator) {
+        return res.status(503).json({ error: 'Metrics aggregator not initialized' });
+      }
+
+      const metrics = aggregator.getMetrics();
+      res.json(metrics);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error('Failed to get metrics', { error: errMsg });
+      res.status(500).json({ error: 'Failed to retrieve metrics' });
     }
   });
 
