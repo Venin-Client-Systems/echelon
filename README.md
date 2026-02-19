@@ -296,6 +296,7 @@ Options:
   --resume                     Resume the most recent session
   -v, --verbose                Enable debug logging
   --approval-mode <mode>       Override approval mode (destructive, all, none)
+  --yolo                       Full autonomous mode — no approvals, no permission prompts
   --telegram                   Start in Telegram bot mode
   -V, --version                Output version number
   -h, --help                   Display help
@@ -364,6 +365,101 @@ Once inside the TUI, type these at the CEO prompt:
 │ └────────────────┘                             │
 │ CEO > _                                        │
 └────────────────────────────────────────────────┘
+```
+
+## Telegram Bot Mode
+
+Run Echelon as a Telegram bot for mobile-first operation:
+
+```bash
+echelon --telegram
+```
+
+### Setup
+
+1. **Create a bot** via [@BotFather](https://t.me/BotFather):
+   - Send `/newbot` and follow prompts
+   - Save the bot token
+
+2. **Get your chat ID**:
+   - Message your bot
+   - Visit `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
+   - Find `"chat":{"id":123456789}` in the response
+
+3. **Configure** via `echelon init` (Step 5) or add to `echelon.config.json`:
+
+```json
+{
+  "telegram": {
+    "token": "123456:ABC...",
+    "chatId": "123456789",
+    "allowedUserIds": [123456789],
+    "health": {
+      "enabled": true,
+      "port": 3000,
+      "bindAddress": "0.0.0.0"
+    }
+  }
+}
+```
+
+### Environment Variables
+
+Override config with environment variables (useful for production):
+
+```bash
+export ECHELON_TELEGRAM_BOT_TOKEN="123456:ABC..."
+export ECHELON_TELEGRAM_CHAT_ID="123456789"
+export ECHELON_TELEGRAM_ALLOWED_USERS="123456789,987654321"  # Comma-separated
+
+# Health monitoring
+export ECHELON_HEALTH_ENABLED="true"
+export ECHELON_HEALTH_PORT="3000"
+export ECHELON_HEALTH_BIND="0.0.0.0"
+```
+
+### Health Monitoring
+
+Telegram bot mode includes an HTTP health check server (default port 3000):
+
+```bash
+curl http://localhost:3000/health
+# {"status":"ok","uptime":120,"lastActivity":"2025-01-15T10:30:00Z"}
+```
+
+Useful for monitoring bot availability in production (Docker, systemd, etc.).
+
+### Features
+
+- **Mobile approval gates** — Approve/reject actions from your phone
+- **Real-time progress** — Live updates from all layers and engineers
+- **Health monitoring** — HTTP endpoint for uptime checks
+- **User auth** — Only responds to configured user IDs
+- **Async question handling** — CEO can ask you questions mid-cascade (5-minute timeout)
+
+### Example Conversation
+
+```
+You: Add JWT authentication to the API
+
+[CEO]: Starting cascade...
+[2IC]: Breaking directive into workstreams:
+       1. JWT token generation
+       2. Refresh token flow
+       3. Middleware integration
+[Eng Lead]: Designed auth architecture
+[Team Lead]: Created issues #42, #43, #44
+
+⚠️ Approval needed: Create 3 GitHub issues?
+[Approve] [Reject]
+
+You: Approve
+
+[Team Lead]: Issues created, starting Cheenoski...
+[Eng#1]: Working on #42 (JWT generation)
+[Eng#2]: Working on #43 (refresh flow)
+[Eng#1]: PR #45 created for #42
+...
 ```
 
 ## Session Persistence

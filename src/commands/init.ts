@@ -294,6 +294,57 @@ export async function runInit(): Promise<void> {
     }
   }
 
+  // ── Step 6: Engineer Configuration ──────────────────────────────
+
+  heading('Step 6 — Engineer Configuration');
+
+  dim('Cheenoski supports multiple AI backends (engines) for code execution.');
+  dim('Default: claude (Claude Code). Others: opencode, codex, cursor, qwen.');
+  console.log('');
+
+  const engineName = await ask('  Primary engine', 'claude');
+  if (!['claude', 'opencode', 'codex', 'cursor', 'qwen'].includes(engineName)) {
+    info(`Unknown engine "${engineName}", defaulting to claude`);
+  }
+
+  console.log('');
+  dim('Billing mode affects how Anthropic API usage is calculated:');
+  dim('  • api  — Standard API pricing (recommended)');
+  dim('  • max  — Claude Pro/Max plan (lower limits, no per-token billing)');
+  console.log('');
+
+  const billingMode = await ask('  Billing mode (api/max)', 'api');
+
+  // ── Step 7: Project Board (Optional) ────────────────────────────
+
+  heading('Step 7 — GitHub Project Board (Optional)');
+
+  dim('Integrate with GitHub Projects v2 for tracking issue status.');
+  dim('Requires project number from your GitHub org/repo project settings.');
+  console.log('');
+
+  const setupBoard = await askYesNo('  Configure project board?', false);
+  let projectBoard: any = undefined;
+
+  if (setupBoard) {
+    console.log('');
+    dim('Find project number in GitHub: Settings → Projects → (project URL has /projects/:number)');
+    console.log('');
+
+    const projectNumber = await ask('  Project number', '');
+    if (projectNumber && !isNaN(parseInt(projectNumber, 10))) {
+      projectBoard = {
+        projectNumber: parseInt(projectNumber, 10),
+        statusField: 'Status',  // Default field names
+        batchField: 'Batch',
+        branchField: 'Branch',
+      };
+      ok('Project board configured');
+    } else {
+      info('Skipping project board (invalid number)');
+    }
+  }
+
   // ── Build Config ────────────────────────────────────────────────
 
   const config: any = {
@@ -317,17 +368,22 @@ export async function runInit(): Promise<void> {
       },
     },
     engineers: {
+      engine: engineName || 'claude',
       maxParallel: Math.floor(maxParallelNum),
       createPr: true,
       prDraft: true,
     },
     approvalMode,
     maxTotalBudgetUsd: budgetNum,
+    billing: billingMode === 'max' ? 'max' : 'api',
   };
 
-  // Add Telegram config if configured
+  // Add optional configs
   if (telegramConfig) {
     config.telegram = telegramConfig;
+  }
+  if (projectBoard) {
+    config.engineers.projectBoard = projectBoard;
   }
 
   // ── Write Config ────────────────────────────────────────────────

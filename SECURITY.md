@@ -90,8 +90,14 @@ export GITHUB_TOKEN="ghp_..."  # or github_pat_...
 **Optional variables:**
 ```bash
 # Telegram bot integration
-export TELEGRAM_BOT_TOKEN="..."
-export TELEGRAM_CHAT_ID="..."
+export ECHELON_TELEGRAM_BOT_TOKEN="..."
+export ECHELON_TELEGRAM_CHAT_ID="..."
+export ECHELON_TELEGRAM_ALLOWED_USERS="123456789,987654321"  # Comma-separated user IDs
+
+# Health monitoring (Telegram mode only)
+export ECHELON_HEALTH_ENABLED="true"
+export ECHELON_HEALTH_PORT="3000"
+export ECHELON_HEALTH_BIND="0.0.0.0"
 
 # Logging configuration
 export LOG_LEVEL="info"      # debug|info|warn|error
