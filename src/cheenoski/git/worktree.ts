@@ -50,15 +50,36 @@ export async function createWorktree(
   const branch = worktreeBranchName(issueNumber, slug);
   const wtPath = worktreePath(repoPath, branch);
 
-  // Defensive check: detect and clean existing worktree/branch before creation
+  // Defensive check: detect orphaned worktree metadata before creation
+  const worktreeMetadataPath = join(repoPath, '.git', 'worktrees', branch);
+  if (existsSync(worktreeMetadataPath)) {
+    logger.warn(`Detected orphaned worktree metadata for ${branch}, auto-cleaning`, {
+      metric: 'worktree_orphan_cleanup',
+      branch,
+      metadataPath: worktreeMetadataPath,
+    });
+
+    try {
+      await cleanupForRetry(repoPath, wtPath, branch);
+      logger.info(`Auto-cleanup successful for ${branch}`);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `Failed to clean orphaned worktree metadata for ${branch}: ${errorMsg}. ` +
+        `Manual cleanup required: rm -rf "${worktreeMetadataPath}"`
+      );
+    }
+  }
+
+  // Additional safety check: verify no active worktree references
   try {
     const existingWorktrees = await git(['worktree', 'list', '--porcelain'], repoPath);
     if (existingWorktrees.includes(branch)) {
-      logger.warn(`Detected existing worktree for ${branch}, cleaning before retry`);
+      logger.warn(`Detected existing worktree reference for ${branch}, cleaning before retry`);
       await cleanupForRetry(repoPath, wtPath, branch);
     }
   } catch (err) {
-    logger.debug(`Pre-creation worktree check failed (non-fatal): ${err instanceof Error ? err.message : err}`);
+    logger.debug(`Pre-creation worktree list check failed (non-fatal): ${err instanceof Error ? err.message : err}`);
   }
 
   try {
