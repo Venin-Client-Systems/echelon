@@ -4,18 +4,12 @@
     <strong>A hierarchical multi-agent AI orchestrator that turns a single directive into a full engineering org.</strong>
   </p>
   <p align="center">
-    <a href="https://github.com/Venin-Client-Systems/echelon/actions/workflows/ci.yml"><img src="https://github.com/Venin-Client-Systems/echelon/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
-    <a href="https://codecov.io/gh/Venin-Client-Systems/echelon"><img src="https://codecov.io/gh/Venin-Client-Systems/echelon/branch/main/graph/badge.svg" alt="Coverage"></a>
-    <a href="https://www.npmjs.com/package/echelon"><img src="https://img.shields.io/npm/v/echelon.svg" alt="npm version"></a>
-    <a href="https://www.npmjs.com/package/echelon"><img src="https://img.shields.io/npm/dm/echelon.svg" alt="npm downloads"></a>
-  </p>
-  <p align="center">
     <a href="#installation">Installation</a> &middot;
     <a href="#quick-start">Quick Start</a> &middot;
     <a href="#how-it-works">How It Works</a> &middot;
     <a href="#configuration">Configuration</a> &middot;
     <a href="#cli-reference">CLI Reference</a> &middot;
-    <a href="https://venin-client-systems.github.io/echelon/">API Docs</a>
+    <a href="#documentation">Docs</a>
   </p>
 </p>
 
@@ -738,10 +732,7 @@ ralphy/                       # Bundled parallel execution engine (Cheenoski)
 
 ### API Reference
 
-Full TypeDoc-generated API documentation is available at:
-- **Live docs:** [https://venin-client-systems.github.io/echelon/](https://venin-client-systems.github.io/echelon/)
-
-Generate docs locally:
+Generate API documentation locally:
 ```bash
 npm run docs:api
 ```

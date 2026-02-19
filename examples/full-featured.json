@@ -1,0 +1,42 @@
+{
+  "project": {
+    "repo": "owner/repo",
+    "path": "/absolute/path/to/repo",
+    "baseBranch": "main"
+  },
+  "layers": {
+    "2ic": {
+      "model": "opus",
+      "maxBudgetUsd": 10.0,
+      "maxTurns": 5
+    },
+    "eng-lead": {
+      "model": "sonnet",
+      "maxBudgetUsd": 5.0,
+      "maxTurns": 8
+    },
+    "team-lead": {
+      "model": "sonnet",
+      "maxBudgetUsd": 5.0,
+      "maxTurns": 8
+    }
+  },
+  "engineers": {
+    "engine": "claude",
+    "fallbackEngines": ["opencode", "cursor"],
+    "maxParallel": 3,
+    "createPr": true,
+    "prDraft": true,
+    "projectBoard": {
+      "projectNumber": 1,
+      "statusField": "Status",
+      "batchField": "Batch"
+    },
+    "stuckWarningMs": 120000,
+    "hardTimeoutMs": 600000,
+    "maxRetries": 2
+  },
+  "approvalMode": "destructive",
+  "billing": "api",
+  "maxTotalBudgetUsd": 50.0
+}

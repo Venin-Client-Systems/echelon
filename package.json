@@ -18,6 +18,7 @@
   "files": [
     "dist",
     "ralphy",
+    "examples",
     "README.md",
     "LICENSE"
   ],

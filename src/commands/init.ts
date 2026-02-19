@@ -311,17 +311,32 @@ export async function runInit(): Promise<void> {
     const chatId = await ask('  Chat ID', '');
     const allowedUsers = await ask('  Allowed user IDs (comma-separated)', '');
 
-    if (botToken && chatId) {
-      telegramConfig = {
-        token: botToken,
-        chatId: chatId,
-        allowedUserIds: allowedUsers ? allowedUsers.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id)) : [],
-        health: {
-          enabled: true,
-          port: 3000,
-        },
-      };
-      ok('Telegram configured');
+    // Validate bot token format: should be like "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+    if (botToken && !/^\d+:[\w-]+$/.test(botToken)) {
+      console.log('');
+      info('⚠️  Invalid token format. Should be "123456:ABC..." from @BotFather');
+      info('Skipping Telegram setup. Run echelon init again to retry.');
+      console.log('');
+    } else if (botToken && chatId) {
+      // Validate chat ID is numeric
+      if (!/^\d+$/.test(chatId)) {
+        console.log('');
+        info('⚠️  Invalid chat ID format. Should be numeric (e.g., "123456789")');
+        info('Get it from: https://api.telegram.org/bot<TOKEN>/getUpdates');
+        info('Skipping Telegram setup. Run echelon init again to retry.');
+        console.log('');
+      } else {
+        telegramConfig = {
+          token: botToken,
+          chatId: chatId,
+          allowedUserIds: allowedUsers ? allowedUsers.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id)) : [],
+          health: {
+            enabled: true,
+            port: 3000,
+          },
+        };
+        ok('Telegram configured');
+      }
     } else {
       info('Skipping Telegram (token or chat ID missing)');
     }

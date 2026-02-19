@@ -64,6 +64,10 @@ export class Orchestrator {
   private readonly boundShutdown = () => this.shutdown();
 
   constructor(opts: OrchestratorOptions) {
+    // Prevent EventEmitter memory leak from multiple signal handlers
+    // (orchestrator + cheenoski both register SIGINT/SIGTERM)
+    process.setMaxListeners(20);
+
     this.config = opts.config;
     this.dryRun = opts.cliOptions.dryRun;
     this.yolo = opts.cliOptions.yolo ?? false;
