@@ -25,6 +25,17 @@ async function askYesNo(prompt: string, defaultYes = true): Promise<boolean> {
   });
 }
 
+async function askQuestion(prompt: string, defaultValue = ''): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const hint = defaultValue ? ` [${defaultValue}]` : '';
+  return new Promise(res => {
+    rl.question(`${prompt}${hint}: `, answer => {
+      rl.close();
+      res(answer.trim() || defaultValue);
+    });
+  });
+}
+
 async function resolveConfig(cliOpts: { config: string; headless: boolean }): Promise<EchelonConfig> {
   // 1. Explicit --config flag
   if (cliOpts.config) {
@@ -68,6 +79,171 @@ async function resolveConfig(cliOpts: { config: string; headless: boolean }): Pr
   console.error('\n  \x1b[1mOr:\x1b[0m Use --config to specify a config file:');
   console.error('    echelon --config /path/to/echelon.config.json -d "your directive"\n');
   process.exit(1);
+}
+
+/**
+ * Smart interactive mode - just type 'echelon' and it handles everything.
+ * Detects context and guides the user through the right workflow.
+ */
+async function runInteractiveMode(yolo = false): Promise<void> {
+  const detected = detectGitRepo();
+
+  if (!detected) {
+    console.error('\n  \x1b[31m✗\x1b[0m Not in a git repository.\n');
+    console.error('  \x1b[1mQuick fix:\x1b[0m');
+    console.error('    cd /path/to/your/project');
+    console.error('    echelon\n');
+    process.exit(1);
+  }
+
+  // Show personalized welcome banner
+  const { readFileSync } = await import('fs');
+  const { join, dirname } = await import('path');
+  const { fileURLToPath } = await import('url');
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
+
+  console.clear();
+  console.log('\n\x1b[1m\x1b[36m' + '═'.repeat(60) + '\x1b[0m');
+  console.log('\x1b[1m  Echelon AI Orchestrator\x1b[0m \x1b[90mv' + packageJson.version + '\x1b[0m');
+  console.log('\x1b[36m' + '═'.repeat(60) + '\x1b[0m\n');
+  console.log('  📁  Project: \x1b[1m' + detected.repo + '\x1b[0m');
+  console.log('  📂  Path: \x1b[90m' + detected.path + '\x1b[0m');
+  console.log('  \x1b[90m✨  Built by George Atkinson & Claude Opus 4.6\x1b[0m');
+  console.log('  \x1b[90m📧  george.atkinson@venin.space\x1b[0m\n');
+
+  // Check for existing config
+  const configPath = discoverConfig(detected.path);
+  let config: EchelonConfig;
+
+  if (!configPath) {
+    // First time - run setup
+    console.log('  \x1b[33m⚠️  No configuration found\x1b[0m\n');
+    console.log('  Let\'s set up Echelon for this project (takes 30 seconds).\n');
+
+    const proceed = await askYesNo('  Ready to start setup?');
+    if (!proceed) {
+      console.log('\n  Run \x1b[1mechelon\x1b[0m anytime to start.\n');
+      process.exit(0);
+    }
+
+    const { runQuickInit } = await import('./commands/init.js');
+    config = await runQuickInit(detected);
+    console.log('\n  \x1b[32m✓\x1b[0m Setup complete!\n');
+  } else {
+    // Load existing config
+    config = loadConfig(configPath);
+
+    // Override approval mode if yolo
+    if (yolo) {
+      (config as { approvalMode: string }).approvalMode = 'none';
+      console.log('  \x1b[32m✓\x1b[0m Configuration loaded\x1b[0m');
+      console.log('  💰  Budget: $' + config.maxTotalBudgetUsd.toFixed(2) + ' | \x1b[33mYOLO MODE\x1b[0m 🚀\n');
+    } else {
+      console.log('  \x1b[32m✓\x1b[0m Configuration loaded\x1b[0m');
+      console.log('  💰  Budget: $' + config.maxTotalBudgetUsd.toFixed(2) + ' | Approval: ' + config.approvalMode + '\n');
+    }
+  }
+
+  // Check for existing session
+  const sessionId = findLatestSession(detected.repo);
+  let shouldResume = false;
+
+  if (sessionId) {
+    const state = loadState(sessionId);
+    if (state && state.status !== 'completed') {
+      console.log('  \x1b[33m📋  Active session found\x1b[0m');
+      console.log('  Status: ' + state.status + ' | Cost: $' + state.totalCost.toFixed(4));
+      console.log('  Directive: ' + state.directive.slice(0, 50) + (state.directive.length > 50 ? '...' : '') + '\n');
+
+      shouldResume = await askYesNo('  Resume this session?');
+      console.log();
+    }
+  }
+
+  let directive = '';
+
+  if (!shouldResume) {
+    // Ask for new directive with helpful examples
+    console.log('  \x1b[1m💡  What should Echelon build?\x1b[0m\n');
+    console.log('  \x1b[90mExamples:\x1b[0m');
+    console.log('    • "Add JWT authentication to the API"');
+    console.log('    • "Fix all issues labeled bug-critical"');
+    console.log('    • "Implement dark mode for the dashboard"');
+    console.log('    • "Add unit tests for the auth module"\n');
+
+    directive = await askQuestion('  Your directive');
+
+    if (!directive) {
+      console.log('\n  \x1b[33m⚠️  No directive provided. Run \x1b[1mechelon\x1b[0m when ready.\n');
+      process.exit(0);
+    }
+
+    console.log();
+  }
+
+  // Show pre-flight checklist
+  console.log('\x1b[36m' + '─'.repeat(60) + '\x1b[0m');
+  console.log('  \x1b[1m🚀  Ready to launch cascade\x1b[0m\n');
+  if (shouldResume) {
+    console.log('  Mode: \x1b[33mResume session\x1b[0m');
+  } else {
+    console.log('  Mode: \x1b[32mNew cascade\x1b[0m');
+    console.log('  Directive: ' + directive.slice(0, 60) + (directive.length > 60 ? '...' : ''));
+  }
+  console.log('  Budget: $' + config.maxTotalBudgetUsd.toFixed(2));
+  if (yolo) {
+    console.log('  Approval: \x1b[33mYOLO MODE - Full autonomous\x1b[0m 🚀');
+  } else {
+    console.log('  Approval: ' + config.approvalMode + (config.approvalMode === 'destructive' ? ' (you\'ll approve actions)' : ''));
+  }
+  console.log('\x1b[36m' + '─'.repeat(60) + '\x1b[0m\n');
+
+  const confirm = await askYesNo('  Start now?');
+  if (!confirm) {
+    console.log('\n  Cancelled. Run \x1b[1mechelon\x1b[0m when ready.\n');
+    process.exit(0);
+  }
+
+  console.log();
+
+  // Create orchestrator and run
+  const state = shouldResume && sessionId ? loadState(sessionId) : undefined;
+  const orchestrator = new Orchestrator({
+    config,
+    cliOptions: {
+      config: configPath || '',
+      directive,
+      headless: false,
+      dryRun: false,
+      resume: shouldResume,
+      verbose: false,
+      telegram: false,
+      yolo,
+    },
+    state: state ?? undefined,
+  });
+
+  // TUI mode
+  if (process.stdin.isTTY) {
+    logger.setQuiet(true);
+
+    const React = await import('react');
+    const { render } = await import('ink');
+    const { App } = await import('./ui/App.js');
+
+    render(
+      React.createElement(App, {
+        orchestrator,
+        initialDirective: shouldResume ? undefined : directive,
+      }),
+    );
+  } else {
+    // Fallback to headless if not TTY
+    if (directive || state) {
+      await orchestrator.runCascade(directive || state!.directive);
+    }
+  }
 }
 
 async function runOrchestrator(opts: CliResult & { command: 'run' }): Promise<void> {
@@ -205,11 +381,12 @@ async function runOrchestrator(opts: CliResult & { command: 'run' }): Promise<vo
     console.log('\x1b[36m' + '═'.repeat(60) + '\x1b[0m\n');
     console.log('  \x1b[32m●\x1b[0m  Hierarchical multi-agent cascade ready');
     console.log('  \x1b[32m●\x1b[0m  Budget: $' + config.maxTotalBudgetUsd.toFixed(2) + ' | Approval: ' + config.approvalMode);
-    console.log('  \x1b[32m●\x1b[0m  Project: ' + config.project.repo + '\n');
+    console.log('  \x1b[32m●\x1b[0m  Project: ' + config.project.repo);
+    console.log('  \x1b[90m✨  Built by George Atkinson & Claude Opus 4.6\x1b[0m\n');
     console.log('  \x1b[90m💡 Quick Tips:\x1b[0m');
     console.log('     Ctrl+C to pause (resumes with --resume)');
     console.log('     Use Tab/Arrow keys to navigate approvals');
-    console.log('     Run `echelon status` anytime to check progress\n');
+    console.log('     Run `echelon` anytime to check status or resume\n');
     console.log('\x1b[36m' + '═'.repeat(60) + '\x1b[0m\n');
 
     // Suppress logger output — Ink owns the terminal
@@ -238,6 +415,12 @@ async function main(): Promise<void> {
   const result = parseArgs(process.argv);
 
   switch (result.command) {
+    case 'interactive': {
+      // Smart interactive mode - just type 'echelon'
+      await runInteractiveMode(result.yolo);
+      break;
+    }
+
     case 'init': {
       const { runInit } = await import('./commands/init.js');
       await runInit();

@@ -8,6 +8,7 @@ export type CliResult =
   | { command: 'run'; options: CliOptions }
   | { command: 'init' }
   | { command: 'status' }
+  | { command: 'interactive'; yolo: boolean }
   | { command: 'sessions'; action: 'list' | 'prune'; }
   | { command: 'sessions'; action: 'delete'; sessionId: string };
 
@@ -123,5 +124,28 @@ export function parseArgs(argv: string[]): CliResult {
     process.exit(0); // unreachable, but satisfies TypeScript
   }
 
-  return result;
+  // TypeScript type assertion - result is definitely set at this point
+  const parsedResult: CliResult = result as CliResult;
+
+  // Detect interactive mode: just 'echelon' or 'echelon --yolo'
+  if (parsedResult.command === 'run') {
+    const runResult = parsedResult; // Store for type narrowing
+    const opts = runResult.options;
+    const isInteractive = (
+      !opts.directive &&
+      !opts.resume &&
+      !opts.config &&
+      !opts.headless &&
+      !opts.dryRun &&
+      !opts.telegram &&
+      process.stdin.isTTY
+    );
+
+    if (isInteractive) {
+      const interactiveResult: CliResult = { command: 'interactive', yolo: opts.yolo };
+      return interactiveResult;
+    }
+  }
+
+  return parsedResult;
 }
