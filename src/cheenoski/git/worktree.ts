@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { join, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { logger } from '../../lib/logger.js';
@@ -49,6 +50,17 @@ export async function createWorktree(
   const branch = worktreeBranchName(issueNumber, slug);
   const wtPath = worktreePath(repoPath, branch);
 
+  // Defensive check: detect and clean existing worktree/branch before creation
+  try {
+    const existingWorktrees = await git(['worktree', 'list', '--porcelain'], repoPath);
+    if (existingWorktrees.includes(branch)) {
+      logger.warn(`Detected existing worktree for ${branch}, cleaning before retry`);
+      await cleanupForRetry(repoPath, wtPath, branch);
+    }
+  } catch (err) {
+    logger.debug(`Pre-creation worktree check failed (non-fatal): ${err instanceof Error ? err.message : err}`);
+  }
+
   try {
     // Create worktree with new branch from base
     await git(['worktree', 'add', '-b', branch, wtPath, baseBranch], repoPath);
@@ -79,6 +91,64 @@ export async function createWorktree(
     } catch { /* branch didn't exist, nothing to clean */ }
 
     throw new Error(`Failed to create worktree for issue #${issueNumber}: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+/**
+ * Prune stale worktree metadata from git's internal records.
+ * Safe to call multiple times. Returns true if pruning was successful.
+ */
+export async function pruneWorktreeMetadata(repoPath: string): Promise<boolean> {
+  try {
+    await git(['worktree', 'prune'], repoPath);
+    logger.debug(`Pruned stale worktree metadata`);
+    return true;
+  } catch (err) {
+    logger.warn(`Failed to prune worktree metadata: ${err instanceof Error ? err.message : err}`);
+    return false;
+  }
+}
+
+/**
+ * Comprehensive cleanup for retry scenarios.
+ * Removes stale git metadata, force-deletes branch, and removes filesystem directory.
+ * Idempotent — safe to call multiple times.
+ */
+export async function cleanupForRetry(
+  repoPath: string,
+  worktreePath: string | null,
+  branchName: string,
+): Promise<void> {
+  // Step 1: Prune stale worktree metadata
+  await pruneWorktreeMetadata(repoPath);
+
+  // Step 2: Verify no lingering worktree references
+  try {
+    const output = await git(['worktree', 'list', '--porcelain'], repoPath);
+    if (output.includes(branchName)) {
+      logger.warn(`Worktree metadata still references ${branchName} after prune`);
+    }
+  } catch (err) {
+    logger.debug(`Could not verify worktree list: ${err instanceof Error ? err.message : err}`);
+  }
+
+  // Step 3: Force-delete branch (ignore errors if doesn't exist)
+  try {
+    await git(['branch', '-D', branchName], repoPath);
+    logger.debug(`Force-deleted branch: ${branchName}`);
+  } catch (err) {
+    // Branch may not exist — this is expected on first retry
+    logger.debug(`Branch deletion skipped (may not exist): ${branchName}`);
+  }
+
+  // Step 4: Remove filesystem directory
+  if (worktreePath) {
+    try {
+      await rm(worktreePath, { recursive: true, force: true });
+      logger.debug(`Removed worktree directory: ${worktreePath}`);
+    } catch (err) {
+      logger.warn(`Failed to remove worktree directory ${worktreePath}: ${err instanceof Error ? err.message : err}`);
+    }
   }
 }
 
