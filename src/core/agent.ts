@@ -35,6 +35,7 @@ export interface SpawnOptions {
   timeoutMs?: number;
   cwd?: string;
   yolo?: boolean;
+  onProgress?: (chunk: string) => void;
 }
 
 export interface AgentResponse {
@@ -44,7 +45,12 @@ export interface AgentResponse {
   durationMs: number;
 }
 
-async function runClaude(args: string[], timeoutMs: number, cwd?: string): Promise<string> {
+async function runClaude(
+  args: string[],
+  timeoutMs: number,
+  cwd?: string,
+  onProgress?: (chunk: string) => void
+): Promise<string> {
   const bin = await getClaudeBin();
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -61,7 +67,17 @@ async function runClaude(args: string[], timeoutMs: number, cwd?: string): Promi
       cwd,
     });
 
-    proc.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
+    proc.stdout.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+      // Stream progress to caller in real-time
+      if (onProgress) {
+        try {
+          onProgress(chunk.toString('utf-8'));
+        } catch (err) {
+          logger.debug('Progress callback error', { error: err });
+        }
+      }
+    });
     proc.stderr.on('data', (chunk: Buffer) => errChunks.push(chunk));
 
     let killTimer: ReturnType<typeof setTimeout> | null = null;
@@ -161,7 +177,7 @@ export async function spawnAgent(
       }
 
       logger.debug('Spawning agent', { model: opts.model, maxTurns });
-      const stdout = await runClaude(args, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.cwd);
+      const stdout = await runClaude(args, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.cwd, opts.onProgress);
       const output = parseOutput(stdout);
 
       if (output.is_error === true) {
@@ -189,7 +205,7 @@ export async function spawnAgent(
 export async function resumeAgent(
   sessionId: string,
   prompt: string,
-  opts: { maxTurns?: number; timeoutMs?: number; cwd?: string; maxBudgetUsd?: number; yolo?: boolean },
+  opts: { maxTurns?: number; timeoutMs?: number; cwd?: string; maxBudgetUsd?: number; yolo?: boolean; onProgress?: (chunk: string) => void },
 ): Promise<AgentResponse> {
   return withErrorBoundary(
     async () => {
@@ -211,7 +227,7 @@ export async function resumeAgent(
       }
 
       logger.debug('Resuming agent', { sessionId: sessionId.slice(0, 8), maxTurns });
-      const stdout = await runClaude(args, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.cwd);
+      const stdout = await runClaude(args, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.cwd, opts.onProgress);
       const output = parseOutput(stdout);
 
       if (output.is_error === true) {

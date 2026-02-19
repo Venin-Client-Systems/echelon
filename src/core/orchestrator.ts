@@ -327,6 +327,16 @@ export class Orchestrator {
       // - Error classification (rate limit, timeout, crash, quota)
       // - Exponential backoff with jitter
       // - Circuit breaker (opens after 5 consecutive failures)
+
+      // Stream thinking output to TUI in real-time
+      const onProgress = (chunk: string) => {
+        this.bus.emitEchelon({
+          type: 'agent_progress',
+          role,
+          content: chunk,
+        });
+      };
+
       const response = agentState.sessionId
         ? await resumeAgent(agentState.sessionId, input, {
             maxTurns,
@@ -334,6 +344,7 @@ export class Orchestrator {
             cwd: this.config.project.path,
             maxBudgetUsd: layerConfig.maxBudgetUsd - agentState.totalCost,
             yolo: this.yolo,
+            onProgress,
           })
         : await spawnAgent(input, {
             model: layerConfig.model,
@@ -343,6 +354,7 @@ export class Orchestrator {
             timeoutMs: layerConfig.timeoutMs,
             cwd: this.config.project.path,
             yolo: this.yolo,
+            onProgress,
           });
 
       // Update agent state
@@ -357,13 +369,13 @@ export class Orchestrator {
         if (this.zeroCostCallCount >= 3 && this.costTrackingAvailable) {
           this.costTrackingAvailable = false;
           this.logger.warn('⚠️  Budget tracking unavailable — subscription/credits-based account detected');
-          this.logger.warn('    API is not returning cost data. Using turn limits for safety.');
-          this.logger.warn('    Set high maxTotalBudgetUsd in config to disable budget warnings.');
+          this.logger.warn('    API is not returning cost data (Claude 20x Max detected).');
+          this.logger.warn('    Anthropic enforces your 4-hour and weekly usage limits.');
 
           // Emit warning to UI
           this.bus.emitEchelon({
             type: 'error',
-            error: '⚠️  Budget tracking unavailable (subscription account detected). Using turn limits instead.',
+            error: '⚠️  Budget tracking unavailable (Claude 20x Max detected). Anthropic enforces your usage limits.',
             role: '2ic',
           });
         }

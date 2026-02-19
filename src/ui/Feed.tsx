@@ -13,12 +13,10 @@ export function Feed({ entries, maxLines = 20 }: FeedProps) {
   return (
     <Box
       flexDirection="column"
-      borderStyle="single"
-      borderColor="gray"
       paddingX={1}
       flexGrow={1}
     >
-      <Text bold color="white">Feed</Text>
+      <Text bold color="white">═ Feed ═</Text>
       {visible.length === 0 ? (
         <Text dimColor>Waiting for directive...</Text>
       ) : (

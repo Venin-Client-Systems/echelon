@@ -208,6 +208,9 @@ async function runInteractiveMode(yolo = false): Promise<void> {
 
   console.log();
 
+  // Give user 1 second to read pre-flight info before clearing
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
   // Create orchestrator and run
   const state = shouldResume && sessionId ? loadState(sessionId) : undefined;
   const orchestrator = new Orchestrator({
@@ -229,15 +232,22 @@ async function runInteractiveMode(yolo = false): Promise<void> {
   if (process.stdin.isTTY) {
     logger.setQuiet(true);
 
+    // Clear pre-flight info before TUI starts
+    console.clear();
+
     const React = await import('react');
     const { render } = await import('ink');
     const { App } = await import('./ui/App.js');
 
-    render(
+    const { unmount: _unmount } = render(
       React.createElement(App, {
         orchestrator,
         initialDirective: shouldResume ? undefined : directive,
       }),
+      {
+        patchConsole: false,
+        exitOnCtrlC: false,
+      },
     );
   } else {
     // Fallback to headless if not TTY
@@ -390,19 +400,29 @@ async function runOrchestrator(opts: CliResult & { command: 'run' }): Promise<vo
     console.log('     Run `echelon` anytime to check status or resume\n');
     console.log('\x1b[36m' + '═'.repeat(60) + '\x1b[0m\n');
 
+    // Give user 1 second to read banner before clearing
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
     // Suppress logger output — Ink owns the terminal
     logger.setQuiet(true);
+
+    // Clear banner before TUI starts
+    console.clear();
 
     try {
       const React = await import('react');
       const { render } = await import('ink');
       const { App } = await import('./ui/App.js');
 
-      render(
+      const { unmount: _unmount } = render(
         React.createElement(App, {
           orchestrator,
           initialDirective: cliOpts.directive,
         }),
+        {
+          patchConsole: false,
+          exitOnCtrlC: false,
+        },
       );
     } catch (err) {
       logger.error('TUI failed to start', { error: err instanceof Error ? err.message : String(err) });

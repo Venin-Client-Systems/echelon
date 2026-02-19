@@ -17,8 +17,8 @@ export function IssuePanel({ issues }: IssuePanelProps) {
   const visible = issues.slice(-8);
 
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1} width={22}>
-      <Text bold color="white">Issues</Text>
+    <Box flexDirection="column" paddingX={1} width={22}>
+      <Text bold color="white">═ Issues ═</Text>
       {visible.length === 0 ? (
         <Text dimColor>None yet</Text>
       ) : (
