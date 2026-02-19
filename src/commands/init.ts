@@ -13,11 +13,16 @@ const VALID_APPROVAL_MODES = new Set(['destructive', 'all', 'none']);
 
 async function ask(prompt: string, defaultValue?: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const suffix = defaultValue ? ` \x1b[2m(${defaultValue})\x1b[0m` : '';
+  const suffix = defaultValue ? ` \x1b[2m[press Enter for: ${defaultValue}]\x1b[0m` : '';
   return new Promise(res => {
     rl.question(`${prompt}${suffix}: `, answer => {
       rl.close();
-      res(answer.trim() || defaultValue || '');
+      const selected = answer.trim() || defaultValue || '';
+      // Show what was selected if default was used
+      if (!answer.trim() && defaultValue) {
+        console.log(`  \x1b[2m→ Using default: ${defaultValue}\x1b[0m`);
+      }
+      res(selected);
     });
   });
 }
