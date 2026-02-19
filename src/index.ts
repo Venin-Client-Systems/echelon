@@ -141,6 +141,22 @@ async function runOrchestrator(opts: CliResult & { command: 'run' }): Promise<vo
       process.exit(1);
     }
 
+    // Show banner for headless mode
+    const { readFileSync } = await import('fs');
+    const { join, dirname } = await import('path');
+    const { fileURLToPath } = await import('url');
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
+
+    console.log('\n\x1b[1m\x1b[36mEchelon v' + packageJson.version + '\x1b[0m ' + (cliOpts.dryRun ? '(dry-run)' : '(headless)'));
+    console.log('\x1b[36m' + '─'.repeat(60) + '\x1b[0m');
+    console.log('Project: ' + config.project.repo);
+    console.log('Budget: $' + config.maxTotalBudgetUsd.toFixed(2) + ' | Approval: ' + config.approvalMode);
+    if (directive) {
+      console.log('Directive: ' + directive.slice(0, 70) + (directive.length > 70 ? '...' : ''));
+    }
+    console.log('\x1b[36m' + '─'.repeat(60) + '\x1b[0m\n');
+
     // Install cleanup handler for headless mode
     const cleanup = () => {
       logger.info('Cleaning up orchestrator...');
@@ -175,6 +191,26 @@ async function runOrchestrator(opts: CliResult & { command: 'run' }): Promise<vo
       console.error('Use --headless for non-interactive environments, or pipe a directive with -d.');
       process.exit(1);
     }
+
+    // Show welcome banner before TUI starts
+    const { readFileSync } = await import('fs');
+    const { join, dirname } = await import('path');
+    const { fileURLToPath } = await import('url');
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
+
+    console.clear();
+    console.log('\n\x1b[1m\x1b[36m' + '═'.repeat(60) + '\x1b[0m');
+    console.log('\x1b[1m  Echelon AI Orchestrator\x1b[0m \x1b[90mv' + packageJson.version + '\x1b[0m');
+    console.log('\x1b[36m' + '═'.repeat(60) + '\x1b[0m\n');
+    console.log('  \x1b[32m●\x1b[0m  Hierarchical multi-agent cascade ready');
+    console.log('  \x1b[32m●\x1b[0m  Budget: $' + config.maxTotalBudgetUsd.toFixed(2) + ' | Approval: ' + config.approvalMode);
+    console.log('  \x1b[32m●\x1b[0m  Project: ' + config.project.repo + '\n');
+    console.log('  \x1b[90m💡 Quick Tips:\x1b[0m');
+    console.log('     Ctrl+C to pause (resumes with --resume)');
+    console.log('     Use Tab/Arrow keys to navigate approvals');
+    console.log('     Run `echelon status` anytime to check progress\n');
+    console.log('\x1b[36m' + '═'.repeat(60) + '\x1b[0m\n');
 
     // Suppress logger output — Ink owns the terminal
     logger.setQuiet(true);
