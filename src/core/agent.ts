@@ -27,6 +27,41 @@ async function getClaudeBin(): Promise<string> {
   }
 }
 
+/**
+ * Validated options for spawning a new Claude agent.
+ *
+ * All parameters are validated at runtime:
+ * - model: must be 'opus', 'sonnet', or 'haiku' (validated by Claude CLI)
+ * - maxBudgetUsd: minimum 0.01 USD (realistic API call cost)
+ * - systemPrompt: non-empty string, max 100k characters
+ * - timeoutMs: 5s to 1 hour (prevents instant timeout or runaway)
+ * - cwd: must be absolute path if provided
+ *
+ * Invalid values will cause errors at spawn time with descriptive messages.
+ *
+ * @category Agent
+ *
+ * @example
+ * ```typescript
+ * // Valid configuration
+ * const opts: SpawnOptions = {
+ *   model: 'sonnet',
+ *   maxBudgetUsd: 5.0,
+ *   systemPrompt: 'You are a helpful coding assistant.',
+ *   maxTurns: 10,
+ *   timeoutMs: 300_000, // 5 minutes
+ *   cwd: '/absolute/path/to/project',
+ *   yolo: false
+ * };
+ *
+ * // Invalid configurations (will error)
+ * const bad1 = { model: 'gpt-4', ... };        // Invalid model
+ * const bad2 = { maxBudgetUsd: -1, ... };       // Negative budget
+ * const bad3 = { systemPrompt: '', ... };       // Empty prompt
+ * const bad4 = { timeoutMs: 1000, ... };        // Too short (< 5s)
+ * const bad5 = { cwd: './relative', ... };      // Relative path
+ * ```
+ */
 export interface SpawnOptions {
   model: string;
   maxBudgetUsd: number;
@@ -37,6 +72,26 @@ export interface SpawnOptions {
   yolo?: boolean;
 }
 
+/**
+ * Response object returned by spawnAgent() and resumeAgent().
+ *
+ * Contains the agent's response content, session information for resumption,
+ * and cost/duration metrics for tracking.
+ *
+ * @category Agent
+ *
+ * @example
+ * ```typescript
+ * const response = await spawnAgent('Hello', opts);
+ * console.log(response.content);      // "Hello! How can I help?"
+ * console.log(response.sessionId);    // "claude-session-abc123"
+ * console.log(response.costUsd);      // 0.0023
+ * console.log(response.durationMs);   // 1243
+ *
+ * // Resume the session later
+ * await resumeAgent(response.sessionId, 'Continue', opts);
+ * ```
+ */
 export interface AgentResponse {
   content: string;
   sessionId: string;

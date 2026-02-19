@@ -474,6 +474,71 @@ All fields except `project.repo` and `project.path` have defaults. When auto-dis
 
 Each layer's `maxTurns` can be overridden in the config. More turns = more file reading and reasoning, but higher cost.
 
+## Validation
+
+Echelon validates all agent inputs at runtime to prevent common configuration errors. Understanding these rules helps you avoid errors and ensures smooth operation.
+
+### Parameter Validation Rules
+
+| Parameter | Validation | Example |
+|-----------|------------|---------|
+| **model** | Must be `'opus'`, `'sonnet'`, or `'haiku'` | `'sonnet'` |
+| **maxBudgetUsd** | Minimum 0.01 USD (realistic API call cost) | `5.0` |
+| **prompt** | Non-empty string, max 100k characters | `"Review auth module"` |
+| **systemPrompt** | Non-empty string, max 100k characters | `"You are a security expert"` |
+| **sessionId** | Min 5 chars, alphanumeric + `-_` only | `'claude-session-abc123'` |
+| **timeoutMs** | 5 seconds to 1 hour (5000-3600000) | `300_000` (5 min) |
+| **cwd** | Absolute path (must start with `/`) | `'/home/user/project'` |
+
+### Error Types
+
+All validation errors extend `AgentValidationError` and include a `recoveryHint` field:
+
+- **ModelValidationError** — Invalid model name (not opus/sonnet/haiku)
+- **BudgetValidationError** — Budget < 0.01 or negative/zero
+- **SessionValidationError** — Invalid session ID format
+- **PromptValidationError** — Empty, whitespace-only, or oversized prompt
+
+### Common Validation Errors
+
+**Invalid model:**
+```typescript
+// ❌ Error: Invalid model "gpt-4"
+await spawnAgent('Hello', { model: 'gpt-4', ... });
+
+// ✅ Correct
+await spawnAgent('Hello', { model: 'sonnet', ... });
+```
+
+**Budget too low:**
+```typescript
+// ❌ Error: Invalid budget: 0
+await spawnAgent('Hello', { maxBudgetUsd: 0, ... });
+
+// ✅ Correct
+await spawnAgent('Hello', { maxBudgetUsd: 1.0, ... });
+```
+
+**Empty prompt:**
+```typescript
+// ❌ Error: Invalid prompt: empty or whitespace-only
+await spawnAgent('', { ... });
+
+// ✅ Correct
+await spawnAgent('Review the code', { ... });
+```
+
+**Relative path:**
+```typescript
+// ❌ Error: Invalid cwd: ./project
+await spawnAgent('Hello', { cwd: './project', ... });
+
+// ✅ Correct
+await spawnAgent('Hello', { cwd: '/home/user/project', ... });
+```
+
+For detailed validation documentation, see [CLAUDE.md](CLAUDE.md#agent-spawn-and-resume-validation).
+
 ## CLI Reference
 
 ```
