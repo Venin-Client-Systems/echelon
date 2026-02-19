@@ -4,7 +4,7 @@ import { buildSystemPrompt } from '../lib/prompts.js';
 import { TranscriptWriter } from '../lib/transcript.js';
 import type {
   EchelonConfig, EchelonState, LayerMessage,
-  AgentRole, LayerId, Action, CliOptions,
+  AgentRole, LayerId, Action, CliOptions, AgentStatus,
 } from '../lib/types.js';
 import { LAYER_LABELS, DEFAULT_MAX_TURNS } from '../lib/types.js';
 import { spawnAgent, resumeAgent } from './agent.js';
@@ -724,6 +724,57 @@ export class Orchestrator {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Get current status and metrics for the orchestrator.
+   *
+   * Returns a snapshot of the current state including:
+   * - Session metadata (ID, repo, directive)
+   * - Cascade status and phase
+   * - Agent states and costs
+   * - Total cost and budget consumption
+   *
+   * Used by the dashboard API to provide real-time status updates.
+   *
+   * @returns Object containing current orchestrator status and metrics
+   */
+  getStatus(): {
+    sessionId: string;
+    projectRepo: string;
+    status: EchelonState['status'];
+    cascadePhase: EchelonState['cascadePhase'];
+    directive: string;
+    agents: Record<AgentRole, {
+      role: AgentRole;
+      status: AgentStatus;
+      totalCost: number;
+      turnsCompleted: number;
+      lastError: string | null;
+    }>;
+    totalCost: number;
+    maxTotalBudget: number;
+    startedAt: string;
+    updatedAt: string;
+    issueCount: number;
+    messageCount: number;
+    pendingApprovals: number;
+  } {
+    return {
+      sessionId: this.state.sessionId,
+      projectRepo: this.state.projectRepo,
+      status: this.state.status,
+      cascadePhase: this.state.cascadePhase,
+      directive: this.state.directive,
+      agents: this.state.agents,
+      totalCost: this.state.totalCost,
+      maxTotalBudget: this.config.maxTotalBudgetUsd,
+      startedAt: this.state.startedAt,
+      updatedAt: this.state.updatedAt,
+      issueCount: this.state.issues.length,
+      messageCount: this.state.messages.length,
+      pendingApprovals: this.executor.getPending().length,
+    };
   }
 
   /** Graceful shutdown — kills Cheenoski subprocesses, saves state */
