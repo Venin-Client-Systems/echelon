@@ -133,6 +133,239 @@ const response = await resumeAgent(agentState.sessionId, newInput, { maxTurns })
 
 When a session is resumed (`echelon --resume`), each agent picks up where it left off with full context.
 
+### Agent Spawn and Resume Validation
+
+All agent operations (`spawnAgent` and `resumeAgent`) validate their inputs at runtime to prevent common configuration errors. Understanding these validation rules helps avoid errors and ensures agents run smoothly.
+
+#### Required Parameter Formats
+
+**For `spawnAgent(prompt, opts)`:**
+
+| Parameter | Type | Validation | Example |
+|-----------|------|------------|---------|
+| `prompt` | `string` | Non-empty, max 100k chars | `"Review the auth module"` |
+| `opts.model` | `string` | Must be 'opus', 'sonnet', or 'haiku' | `'sonnet'` |
+| `opts.maxBudgetUsd` | `number` | Minimum 0.01 USD | `5.0` |
+| `opts.systemPrompt` | `string` | Non-empty, max 100k chars | `"You are a security expert"` |
+| `opts.maxTurns` | `number?` | Positive integer (optional) | `10` |
+| `opts.timeoutMs` | `number?` | 5s to 1 hour (optional) | `300_000` |
+| `opts.cwd` | `string?` | Absolute path (optional) | `'/path/to/project'` |
+| `opts.yolo` | `boolean?` | Skip permissions (optional) | `false` |
+
+**For `resumeAgent(sessionId, prompt, opts)`:**
+
+| Parameter | Type | Validation | Example |
+|-----------|------|------------|---------|
+| `sessionId` | `string` | Non-empty, min 5 chars, alphanumeric + `-_` | `'claude-session-abc123'` |
+| `prompt` | `string` | Non-empty, max 100k chars | `"Continue with tests"` |
+| `opts.*` | Same as spawn | Same validation rules (all optional) | — |
+
+#### Validation Rules
+
+**Model Validation:**
+- Must be exactly `'opus'`, `'sonnet'`, or `'haiku'`
+- Case-sensitive (lowercase only)
+- Validated by the Claude CLI at spawn time
+- **Error type:** Generic error from CLI (e.g., "Invalid model")
+
+**Budget Validation:**
+- Minimum: `0.01` USD (covers realistic API call cost)
+- Must be positive (> 0)
+- Prevents accidental zero or negative budgets
+- **Error type:** `BudgetValidationError`
+- **Recovery:** Set `maxBudgetUsd` to a value >= 0.01
+
+**Prompt Validation:**
+- Must not be empty or whitespace-only
+- Maximum length: 100,000 characters
+- Applies to both initial prompt and system prompt
+- **Error type:** `PromptValidationError`
+- **Recovery:** Provide a non-empty prompt within the character limit
+
+**Session ID Validation:**
+- Must be non-empty and trimmed
+- Minimum length: 5 characters
+- Allowed characters: `a-z`, `A-Z`, `0-9`, `-`, `_`
+- Must be from a previous `spawnAgent()` or `resumeAgent()` call
+- **Error type:** `SessionValidationError`
+- **Recovery:** Use a valid session ID from a previous agent response
+
+**Timeout Validation:**
+- Minimum: 5,000ms (5 seconds) — prevents instant timeouts
+- Maximum: 3,600,000ms (1 hour) — prevents runaway processes
+- Default: 600,000ms (10 minutes)
+- **Error type:** `AgentValidationError`
+- **Recovery:** Set `timeoutMs` between 5s and 1 hour
+
+**Working Directory Validation:**
+- Must be an absolute path (starts with `/`)
+- Relative paths like `./current` or `../parent` are not allowed
+- Default: `process.cwd()`
+- **Error type:** `AgentValidationError`
+- **Recovery:** Use an absolute path (e.g., `/home/user/project`)
+
+#### Custom Error Types
+
+All validation errors extend `AgentValidationError` and include a `recoveryHint` field:
+
+```typescript
+// src/core/agent-errors.ts
+export class AgentValidationError extends Error {
+  constructor(message: string, public readonly recoveryHint: string);
+}
+
+export class ModelValidationError extends AgentValidationError;
+export class BudgetValidationError extends AgentValidationError;
+export class SessionValidationError extends AgentValidationError;
+export class PromptValidationError extends AgentValidationError;
+```
+
+**When are these thrown?**
+
+These errors are thrown during validation checks:
+- `ModelValidationError` — Invalid model name
+- `BudgetValidationError` — Budget < 0.01 or negative/zero
+- `SessionValidationError` — Invalid session ID format or empty
+- `PromptValidationError` — Empty, whitespace-only, or oversized prompt
+
+**Example error handling:**
+
+```typescript
+import { spawnAgent } from './core/agent.js';
+import { BudgetValidationError, PromptValidationError } from './core/agent-errors.js';
+
+try {
+  const response = await spawnAgent('Hello', {
+    model: 'sonnet',
+    maxBudgetUsd: -1.0, // Invalid!
+    systemPrompt: '',
+  });
+} catch (err) {
+  if (err instanceof BudgetValidationError) {
+    console.error(err.message);      // "Invalid budget: -1"
+    console.error(err.recoveryHint); // "Budget must be at least 0.01 USD"
+  } else if (err instanceof PromptValidationError) {
+    console.error(err.message);      // "Invalid prompt: ..."
+    console.error(err.recoveryHint); // "Prompt must be a non-empty string..."
+  }
+}
+```
+
+#### Valid Configuration Examples
+
+**Minimal valid spawn:**
+```typescript
+const response = await spawnAgent(
+  'Review the codebase',
+  {
+    model: 'sonnet',
+    maxBudgetUsd: 1.0,
+    systemPrompt: 'You are a code reviewer.',
+  }
+);
+```
+
+**Full configuration with all options:**
+```typescript
+const response = await spawnAgent(
+  'Implement authentication',
+  {
+    model: 'opus',
+    maxBudgetUsd: 5.0,
+    systemPrompt: 'You are a security expert specializing in authentication.',
+    maxTurns: 20,
+    timeoutMs: 900_000, // 15 minutes
+    cwd: '/home/user/my-project',
+    yolo: false,
+  }
+);
+```
+
+**Valid resume:**
+```typescript
+const resume = await resumeAgent(
+  'claude-session-abc123',
+  'Now add input validation',
+  {
+    maxTurns: 10,
+    maxBudgetUsd: 2.0,
+  }
+);
+```
+
+#### Invalid Configuration Examples
+
+**Invalid model:**
+```typescript
+// ❌ Wrong
+await spawnAgent('Hello', {
+  model: 'gpt-4', // Invalid! Must be opus/sonnet/haiku
+  maxBudgetUsd: 1.0,
+  systemPrompt: '',
+});
+// Error: Invalid model "gpt-4". Valid models: opus, sonnet, haiku
+```
+
+**Invalid budget:**
+```typescript
+// ❌ Wrong
+await spawnAgent('Hello', {
+  model: 'sonnet',
+  maxBudgetUsd: -1.0, // Invalid! Must be >= 0.01
+  systemPrompt: '',
+});
+// Error: Invalid budget: -1
+// Recovery: Budget must be at least 0.01 USD
+```
+
+**Empty prompt:**
+```typescript
+// ❌ Wrong
+await spawnAgent('', { // Invalid! Prompt cannot be empty
+  model: 'sonnet',
+  maxBudgetUsd: 1.0,
+  systemPrompt: '',
+});
+// Error: Invalid prompt: prompt is empty or whitespace-only
+```
+
+**Invalid session ID:**
+```typescript
+// ❌ Wrong
+await resumeAgent(
+  'abc', // Invalid! Too short (min 5 chars)
+  'Continue',
+  { maxTurns: 5 }
+);
+// Error: Invalid session ID: too short
+```
+
+**Relative path:**
+```typescript
+// ❌ Wrong
+await spawnAgent('Hello', {
+  model: 'sonnet',
+  maxBudgetUsd: 1.0,
+  systemPrompt: '',
+  cwd: './relative/path', // Invalid! Must be absolute
+});
+// Error: Invalid cwd: ./relative/path
+// Recovery: Working directory must be an absolute path
+```
+
+**Timeout too short:**
+```typescript
+// ❌ Wrong
+await spawnAgent('Hello', {
+  model: 'sonnet',
+  maxBudgetUsd: 1.0,
+  systemPrompt: '',
+  timeoutMs: 1000, // Invalid! Min 5000ms
+});
+// Error: Timeout too short: 1000ms
+// Recovery: Timeout must be at least 5000ms (5 seconds)
+```
+
 ### Cheenoski vs Ralphy
 
 - **Echelon** = The orchestrator (this repo). Manages the hierarchical cascade.

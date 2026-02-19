@@ -20,6 +20,12 @@ export const DEFAULT_MAX_TURNS: Record<string, number> = {
 /**
  * Configuration schema for a single layer (2IC, Eng Lead, or Team Lead).
  *
+ * All parameters are validated at runtime:
+ * - model: must be 'opus', 'sonnet', or 'haiku'
+ * - maxBudgetUsd: must be positive (minimum 0.01 USD for realistic API call cost)
+ * - maxTurns: must be positive integer if provided
+ * - timeoutMs: must be positive (default 300s = 5 minutes)
+ *
  * @category Configuration
  */
 export const LayerConfigSchema = z.object({
