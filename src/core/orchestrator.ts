@@ -141,6 +141,9 @@ export class Orchestrator {
       return;
     }
 
+    // Prerequisite checks — fail fast if missing required tools
+    await this.checkPrerequisites();
+
     // Write transcript header on new sessions
     if (this.state.messages.length === 0) {
       this.transcript.writeHeader(this.config, directive);
@@ -609,6 +612,53 @@ export class Orchestrator {
       return false;
     }
     return true;
+  }
+
+  /** Check prerequisites (gh, claude CLI) before starting cascade */
+  private async checkPrerequisites(): Promise<void> {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const execFileAsync = promisify(execFile);
+
+    // Check for gh CLI
+    try {
+      await execFileAsync('gh', ['--version'], { timeout: 5000 });
+    } catch (err) {
+      const msg = err instanceof Error && 'code' in err ? (err as any).code : '';
+      if (msg === 'ENOENT') {
+        throw new Error(
+          'GitHub CLI (gh) not found. Install: https://cli.github.com\n' +
+          'This is required for issue creation and repo operations.'
+        );
+      }
+      throw new Error(`GitHub CLI check failed: ${err}`);
+    }
+
+    // Check if gh is authenticated
+    try {
+      await execFileAsync('gh', ['auth', 'status'], { timeout: 5000 });
+    } catch {
+      throw new Error(
+        'GitHub CLI not authenticated. Run: gh auth login\n' +
+        'This is required for issue creation and repo operations.'
+      );
+    }
+
+    // Check for claude CLI
+    try {
+      await execFileAsync('claude', ['--version'], { timeout: 5000 });
+    } catch (err) {
+      const msg = err instanceof Error && 'code' in err ? (err as any).code : '';
+      if (msg === 'ENOENT') {
+        throw new Error(
+          'Claude Code CLI not found. Install: npm install -g @anthropic-ai/claude-code\n' +
+          'This is required for AI agent execution.'
+        );
+      }
+      throw new Error(`Claude CLI check failed: ${err}`);
+    }
+
+    this.logger.debug('Prerequisites check passed (gh, claude CLI available)');
   }
 
   /** Print dry-run information */

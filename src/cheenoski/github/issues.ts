@@ -5,6 +5,45 @@ import { logger } from '../../lib/logger.js';
 
 const execFileAsync = promisify(execFile);
 
+/** Retry GitHub CLI commands with exponential backoff for rate limits */
+async function withGitHubRetry<T>(
+  operation: () => Promise<T>,
+  operationName: string,
+  maxRetries = 3,
+): Promise<T> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      lastError = err instanceof Error ? err : new Error(errorMsg);
+
+      // Check if it's a rate limit error
+      const isRateLimit = errorMsg.includes('rate limit') ||
+                          errorMsg.includes('403') ||
+                          errorMsg.includes('429');
+
+      if (isRateLimit && attempt < maxRetries) {
+        const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 16000); // Cap at 16s
+        logger.warn(`${operationName}: rate limit hit, retrying in ${delayMs}ms`, {
+          attempt,
+          maxRetries,
+        });
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      } else if (attempt < maxRetries) {
+        // Other errors - shorter delay
+        const delayMs = 500;
+        logger.warn(`${operationName}: failed, retrying`, { attempt, error: errorMsg });
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 /** Fetch open issues by label from a repo */
 export async function fetchIssuesByLabel(
   repo: string,
@@ -12,25 +51,27 @@ export async function fetchIssuesByLabel(
   limit = 50,
 ): Promise<CheenoskiIssue[]> {
   try {
-    const { stdout } = await execFileAsync('gh', [
-      'issue', 'list',
-      '--repo', repo,
-      '--label', label,
-      '--state', 'open',
-      '--limit', String(limit),
-      '--json', 'number,title,body,labels,state,assignees,url',
-    ], { encoding: 'utf-8' });
+    return await withGitHubRetry(async () => {
+      const { stdout } = await execFileAsync('gh', [
+        'issue', 'list',
+        '--repo', repo,
+        '--label', label,
+        '--state', 'open',
+        '--limit', String(limit),
+        '--json', 'number,title,body,labels,state,assignees,url',
+      ], { encoding: 'utf-8' });
 
-    const raw = JSON.parse(stdout);
-    return raw.map((issue: any) => ({
-      number: issue.number,
-      title: issue.title,
-      body: issue.body,
-      labels: (issue.labels ?? []).map((l: any) => l.name),
-      state: issue.state.toLowerCase(),
-      assignees: issue.assignees.map((a: any) => a.login),
-      url: issue.url,
-    }));
+      const raw = JSON.parse(stdout);
+      return raw.map((issue: any) => ({
+        number: issue.number,
+        title: issue.title,
+        body: issue.body,
+        labels: (issue.labels ?? []).map((l: any) => l.name),
+        state: issue.state.toLowerCase(),
+        assignees: issue.assignees.map((a: any) => a.login),
+        url: issue.url,
+      }));
+    }, `fetch issues (${label})`);
   } catch (err) {
     logger.warn(`Failed to fetch issues for label "${label}" in ${repo}: ${err}`);
     return [];
