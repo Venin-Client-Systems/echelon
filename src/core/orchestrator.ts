@@ -784,20 +784,75 @@ export class Orchestrator {
   private printDryRun(directive: string): void {
     const isMax = this.config.billing === 'max';
     const fmtBudget = (usd: number) => isMax ? '\u221e (Max plan)' : `$${usd}`;
-    console.log('\n=== DRY RUN ===\n');
-    console.log(`Project: ${this.config.project.repo}`);
-    console.log(`Directive: ${directive}`);
-    console.log(`Approval Mode: ${this.config.approvalMode}`);
-    console.log(`Max Budget: ${fmtBudget(this.config.maxTotalBudgetUsd)}`);
-    console.log('\nCascade Plan:');
-    console.log('  1. CEO → 2IC: Strategy breakdown');
-    console.log(`     Model: ${this.config.layers['2ic'].model}, Budget: ${fmtBudget(this.config.layers['2ic'].maxBudgetUsd)}`);
-    console.log('  2. 2IC → Eng Lead: Technical design');
-    console.log(`     Model: ${this.config.layers['eng-lead'].model}, Budget: ${fmtBudget(this.config.layers['eng-lead'].maxBudgetUsd)}`);
-    console.log('  3. Eng Lead → Team Lead: Issue creation + execution');
-    console.log(`     Model: ${this.config.layers['team-lead'].model}, Budget: ${fmtBudget(this.config.layers['team-lead'].maxBudgetUsd)}`);
-    console.log(`  4. Team Lead → Engineers: Cheenoski (max ${this.config.engineers.maxParallel} parallel)`);
-    console.log('\n=== END DRY RUN ===\n');
+
+    // Get cost estimate
+    const { estimateCascadeCost } = require('../lib/cost-estimator.js');
+    const estimate = estimateCascadeCost(directive, this.config);
+
+    console.log('\n\x1b[1m\x1b[36m═════════════════════════════════════════════════════════════\x1b[0m');
+    console.log('\x1b[1m  DRY RUN - CASCADE PREVIEW\x1b[0m');
+    console.log('\x1b[36m═════════════════════════════════════════════════════════════\x1b[0m\n');
+
+    console.log('\x1b[1mPROJECT:\x1b[0m');
+    console.log(`  Repository: ${this.config.project.repo}`);
+    console.log(`  Base Branch: ${this.config.project.baseBranch}`);
+    console.log('');
+
+    console.log('\x1b[1mDIRECTIVE:\x1b[0m');
+    console.log(`  ${directive}`);
+    console.log('');
+
+    console.log('\x1b[1mCOST ESTIMATE:\x1b[0m');
+    if (isMax) {
+      console.log(`  Estimated: $${estimate.minCost.toFixed(2)} - $${estimate.maxCost.toFixed(2)} \x1b[90m(Max plan - unlimited)\x1b[0m`);
+    } else {
+      console.log(`  Estimated: $${estimate.minCost.toFixed(2)} - $${estimate.maxCost.toFixed(2)}`);
+      console.log(`  Max Budget: $${this.config.maxTotalBudgetUsd.toFixed(2)}`);
+      const sufficient = estimate.maxCost <= this.config.maxTotalBudgetUsd;
+      console.log(`  Status: ${sufficient ? '\x1b[32m✓ Sufficient\x1b[0m' : '\x1b[33m⚠️  May exceed budget\x1b[0m'}`);
+    }
+    console.log('');
+
+    console.log('\x1b[1mCONFIGURATION:\x1b[0m');
+    console.log(`  Approval Mode: ${this.config.approvalMode}`);
+    console.log(`  Max Duration: ${(this.config.maxCascadeDurationMs / 60_000).toFixed(0)} minutes`);
+    console.log(`  Consolidate Issues: ${this.consolidate ? 'Yes (3-5 larger issues)' : 'No (standard)'}`);
+    console.log('');
+
+    console.log('\x1b[1mEXECUTION PLAN:\x1b[0m');
+    console.log('  \x1b[36m1. CEO → 2IC\x1b[0m Strategy breakdown');
+    console.log(`     Model: ${this.config.layers['2ic'].model} | Budget: ${fmtBudget(this.config.layers['2ic'].maxBudgetUsd)} | Est: $${estimate.perLayer[0].minCost.toFixed(3)}-$${estimate.perLayer[0].maxCost.toFixed(3)}`);
+    console.log(`     Timeout: ${(this.config.layers['2ic'].timeoutMs / 1000).toFixed(0)}s`);
+    console.log('');
+
+    console.log('  \x1b[36m2. 2IC → Eng Lead\x1b[0m Technical design');
+    console.log(`     Model: ${this.config.layers['eng-lead'].model} | Budget: ${fmtBudget(this.config.layers['eng-lead'].maxBudgetUsd)} | Est: $${estimate.perLayer[1].minCost.toFixed(3)}-$${estimate.perLayer[1].maxCost.toFixed(3)}`);
+    console.log(`     Timeout: ${(this.config.layers['eng-lead'].timeoutMs / 1000).toFixed(0)}s`);
+    console.log('');
+
+    console.log('  \x1b[36m3. Eng Lead → Team Lead\x1b[0m Issue creation + execution');
+    console.log(`     Model: ${this.config.layers['team-lead'].model} | Budget: ${fmtBudget(this.config.layers['team-lead'].maxBudgetUsd)} | Est: $${estimate.perLayer[2].minCost.toFixed(3)}-$${estimate.perLayer[2].maxCost.toFixed(3)}`);
+    console.log(`     Timeout: ${(this.config.layers['team-lead'].timeoutMs / 1000).toFixed(0)}s`);
+    console.log('');
+
+    console.log('  \x1b[36m4. Team Lead → Engineers\x1b[0m Cheenoski execution');
+    console.log(`     Max Parallel: ${this.config.engineers.maxParallel}`);
+    console.log(`     Engine: ${this.config.engineers.engine || 'claude'}`);
+    console.log(`     Create PRs: ${this.config.engineers.createPr ? 'Yes' : 'No'}${this.config.engineers.prDraft ? ' (draft)' : ''}`);
+    console.log('');
+
+    console.log('\x1b[1mEXPECTED ACTIONS:\x1b[0m');
+    console.log('  • 2IC will break directive into strategic workstreams');
+    console.log('  • Eng Lead will design technical architecture and create issue specs');
+    console.log('  • Team Lead will create GitHub issues and invoke Cheenoski');
+    console.log('  • Engineers will implement tasks in parallel via Cheenoski');
+    if (this.config.engineers.createPr) {
+      console.log('  • Pull requests will be created for each completed task');
+    }
+    console.log('');
+
+    console.log('\x1b[36m═════════════════════════════════════════════════════════════\x1b[0m');
+    console.log('\x1b[90mRun without --dry-run to execute this cascade.\x1b[0m\n');
   }
 
   /** Check if the cascade has exceeded its max duration */
