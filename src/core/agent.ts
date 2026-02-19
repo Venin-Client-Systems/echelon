@@ -4,6 +4,14 @@ import { logger } from '../lib/logger.js';
 import type { ClaudeJsonOutput } from '../lib/types.js';
 import { DEFAULT_MAX_TURNS } from '../lib/types.js';
 import { withErrorBoundary, CircuitBreaker } from './error-boundaries.js';
+import {
+  validateModel,
+  validateBudget,
+  validatePrompt,
+  validateSessionId,
+  validateTimeout,
+  validateCwd,
+} from './agent-validation.js';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_TIMEOUT_MS = 600_000; // 10 min — management agents may think long
@@ -202,6 +210,20 @@ export async function spawnAgent(
 ): Promise<AgentResponse> {
   return withErrorBoundary(
     async () => {
+      // Validate all inputs before spawning
+      validatePrompt(prompt, 'prompt');
+      validateModel(opts.model);
+      validateBudget(opts.maxBudgetUsd);
+      validatePrompt(opts.systemPrompt, 'systemPrompt');
+
+      if (opts.timeoutMs !== undefined) {
+        validateTimeout(opts.timeoutMs);
+      }
+
+      if (opts.cwd !== undefined) {
+        validateCwd(opts.cwd);
+      }
+
       const start = Date.now();
       const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS[opts.model] ?? 8;
       const args = [
@@ -253,6 +275,22 @@ export async function resumeAgent(
 ): Promise<AgentResponse> {
   return withErrorBoundary(
     async () => {
+      // Validate all inputs before resuming
+      validateSessionId(sessionId);
+      validatePrompt(prompt, 'prompt');
+
+      if (opts.maxBudgetUsd !== undefined) {
+        validateBudget(opts.maxBudgetUsd);
+      }
+
+      if (opts.timeoutMs !== undefined) {
+        validateTimeout(opts.timeoutMs);
+      }
+
+      if (opts.cwd !== undefined) {
+        validateCwd(opts.cwd);
+      }
+
       const start = Date.now();
       const maxTurns = opts.maxTurns ?? 8;
       const args = [

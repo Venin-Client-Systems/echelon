@@ -2,157 +2,23 @@ import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnAgent, resumeAgent, type SpawnOptions } from '../agent.js';
 import type { ClaudeJsonOutput } from '../../lib/types.js';
-
-// --- Custom Validation Error Types ---
-
-/**
- * Base class for agent validation errors.
- */
-class AgentValidationError extends Error {
-  constructor(
-    message: string,
-    public readonly recoveryHint: string,
-  ) {
-    super(message);
-    this.name = 'AgentValidationError';
-  }
-}
-
-/**
- * Model validation error (invalid model name).
- */
-class ModelValidationError extends AgentValidationError {
-  constructor(model: string) {
-    super(
-      `Invalid model: ${model}`,
-      'Must be one of: opus, sonnet, haiku',
-    );
-    this.name = 'ModelValidationError';
-  }
-}
-
-/**
- * Budget validation error (invalid budget value).
- */
-class BudgetValidationError extends AgentValidationError {
-  constructor(budget: number) {
-    super(
-      `Invalid budget: ${budget}`,
-      'Budget must be at least 0.01 USD',
-    );
-    this.name = 'BudgetValidationError';
-  }
-}
-
-/**
- * Session validation error (invalid session ID).
- */
-class SessionValidationError extends AgentValidationError {
-  constructor(sessionId: string, reason: string) {
-    super(
-      `Invalid session ID: ${reason}`,
-      'Session ID must be a non-empty string from a previous agent session',
-    );
-    this.name = 'SessionValidationError';
-  }
-}
-
-/**
- * Prompt validation error (invalid prompt).
- */
-class PromptValidationError extends AgentValidationError {
-  constructor(reason: string) {
-    super(
-      `Invalid prompt: ${reason}`,
-      'Prompt must be a non-empty string (max 100,000 characters)',
-    );
-    this.name = 'PromptValidationError';
-  }
-}
-
-// --- Validation Functions ---
-
-/**
- * Validate model name.
- */
-function validateModel(model: string): void {
-  const validModels = ['opus', 'sonnet', 'haiku'];
-  if (!validModels.includes(model)) {
-    throw new ModelValidationError(model);
-  }
-}
-
-/**
- * Validate budget.
- */
-function validateBudget(budget: number): void {
-  if (budget <= 0) {
-    throw new BudgetValidationError(budget);
-  }
-  if (budget < 0.01) {
-    throw new BudgetValidationError(budget);
-  }
-}
-
-/**
- * Validate prompt.
- */
-function validatePrompt(prompt: string, label = 'prompt'): void {
-  if (!prompt || prompt.trim().length === 0) {
-    throw new PromptValidationError(`${label} is empty or whitespace-only`);
-  }
-  if (prompt.length > 100_000) {
-    throw new PromptValidationError(`${label} exceeds 100,000 characters (got ${prompt.length})`);
-  }
-}
-
-/**
- * Validate session ID.
- */
-function validateSessionId(sessionId: string): void {
-  if (!sessionId || sessionId.trim().length === 0) {
-    throw new SessionValidationError(sessionId, 'empty or whitespace-only');
-  }
-  if (sessionId.length < 5) {
-    throw new SessionValidationError(sessionId, 'too short (minimum 5 characters)');
-  }
-  // Check for valid characters (alphanumeric, hyphens, underscores)
-  if (!/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
-    throw new SessionValidationError(sessionId, 'contains invalid characters (only alphanumeric, hyphens, and underscores allowed)');
-  }
-}
-
-/**
- * Validate timeout bounds.
- */
-function validateTimeout(timeoutMs: number): void {
-  const MIN_TIMEOUT = 5_000; // 5 seconds
-  const MAX_TIMEOUT = 3_600_000; // 1 hour
-  if (timeoutMs < MIN_TIMEOUT) {
-    throw new AgentValidationError(
-      `Timeout too short: ${timeoutMs}ms`,
-      `Timeout must be at least ${MIN_TIMEOUT}ms (5 seconds)`,
-    );
-  }
-  if (timeoutMs > MAX_TIMEOUT) {
-    throw new AgentValidationError(
-      `Timeout too long: ${timeoutMs}ms`,
-      `Timeout must be at most ${MAX_TIMEOUT}ms (1 hour)`,
-    );
-  }
-}
-
-/**
- * Validate working directory path.
- */
-function validateCwd(cwd: string): void {
-  if (!cwd.startsWith('/')) {
-    throw new AgentValidationError(
-      `Invalid cwd: ${cwd}`,
-      'Working directory must be an absolute path',
-    );
-  }
-}
+import {
+  validateModel,
+  validateBudget,
+  validatePrompt,
+  validateSessionId,
+  validateTimeout,
+  validateCwd,
+} from '../agent-validation.js';
+import {
+  AgentValidationError,
+  ModelValidationError,
+  BudgetValidationError,
+  PromptValidationError,
+  SessionValidationError,
+  TimeoutValidationError,
+  WorkingDirectoryValidationError,
+} from '../agent-errors.js';
 
 // --- Schema Validation Tests ---
 
@@ -261,8 +127,8 @@ describe('Schema Validation', () => {
         () => validatePrompt(hugePrompt),
         (err: PromptValidationError) => {
           assert.equal(err.name, 'PromptValidationError');
-          assert.ok(err.message.includes('exceeds 100,000'));
-          assert.ok(err.message.includes('100001'));
+          assert.ok(err.message.includes('exceeds'));
+          assert.ok(err.message.includes('100,001'));
           return true;
         }
       );
@@ -339,8 +205,8 @@ describe('Schema Validation', () => {
     it('should reject timeouts below minimum (5s)', () => {
       assert.throws(
         () => validateTimeout(4_999),
-        (err: AgentValidationError) => {
-          assert.equal(err.name, 'AgentValidationError');
+        (err: TimeoutValidationError) => {
+          assert.equal(err.name, 'TimeoutValidationError');
           assert.ok(err.message.includes('too short'));
           assert.ok(err.recoveryHint.includes('5 seconds'));
           return true;
@@ -349,8 +215,8 @@ describe('Schema Validation', () => {
 
       assert.throws(
         () => validateTimeout(1_000),
-        (err: AgentValidationError) => {
-          assert.equal(err.name, 'AgentValidationError');
+        (err: TimeoutValidationError) => {
+          assert.equal(err.name, 'TimeoutValidationError');
           return true;
         }
       );
@@ -359,8 +225,8 @@ describe('Schema Validation', () => {
     it('should reject timeouts above maximum (1h)', () => {
       assert.throws(
         () => validateTimeout(3_600_001),
-        (err: AgentValidationError) => {
-          assert.equal(err.name, 'AgentValidationError');
+        (err: TimeoutValidationError) => {
+          assert.equal(err.name, 'TimeoutValidationError');
           assert.ok(err.message.includes('too long'));
           assert.ok(err.recoveryHint.includes('1 hour'));
           return true;
@@ -379,8 +245,8 @@ describe('Schema Validation', () => {
     it('should reject relative paths', () => {
       assert.throws(
         () => validateCwd('relative/path'),
-        (err: AgentValidationError) => {
-          assert.equal(err.name, 'AgentValidationError');
+        (err: WorkingDirectoryValidationError) => {
+          assert.equal(err.name, 'WorkingDirectoryValidationError');
           assert.ok(err.message.includes('Invalid cwd'));
           assert.ok(err.recoveryHint.includes('absolute path'));
           return true;
@@ -389,16 +255,16 @@ describe('Schema Validation', () => {
 
       assert.throws(
         () => validateCwd('./current'),
-        (err: AgentValidationError) => {
-          assert.equal(err.name, 'AgentValidationError');
+        (err: WorkingDirectoryValidationError) => {
+          assert.equal(err.name, 'WorkingDirectoryValidationError');
           return true;
         }
       );
 
       assert.throws(
         () => validateCwd('../parent'),
-        (err: AgentValidationError) => {
-          assert.equal(err.name, 'AgentValidationError');
+        (err: WorkingDirectoryValidationError) => {
+          assert.equal(err.name, 'WorkingDirectoryValidationError');
           return true;
         }
       );
