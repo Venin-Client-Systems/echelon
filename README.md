@@ -63,6 +63,29 @@ npm run build
 npm link
 ```
 
+### Optional: Enable Shell Completion
+
+Add tab completion for 10x faster command entry:
+
+```bash
+# Bash
+source completions/echelon-completion.bash
+echo "source $(pwd)/completions/echelon-completion.bash" >> ~/.bashrc
+
+# Zsh
+mkdir -p ~/.zsh/completions
+cp completions/echelon-completion.zsh ~/.zsh/completions/_echelon
+# Then add to ~/.zshrc and reload
+```
+
+See [docs/SHELL-COMPLETION.md](docs/SHELL-COMPLETION.md) for full instructions.
+
+### Quick Reference
+
+- **[Cheat Sheet](docs/CHEATSHEET.md)** - All commands on one page
+- **[Testing Docs](docs/TESTING.md)** - Stress test results and quality assurance
+- **[Shell Completion](docs/SHELL-COMPLETION.md)** - Tab completion setup
+
 ## Quick Start
 
 ### Just run it
