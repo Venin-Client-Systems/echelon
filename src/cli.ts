@@ -56,7 +56,24 @@ export function parseArgs(argv: string[]): CliResult {
   program
     .name('echelon')
     .description('Hierarchical multi-agent AI org orchestrator')
-    .version(packageJson.version);
+    .version(packageJson.version)
+    .addHelpText('after', `
+Quick Start:
+  $ echelon              Interactive mode (recommended)
+  $ echelon --yolo       Full autonomous mode
+  $ echelon status       Check current cascade state
+  $ echelon --help       Show this help message
+
+Examples:
+  $ echelon                                    # Start interactive session
+  $ echelon --yolo                             # Run with auto-approvals
+  $ echelon -d "Add JWT auth" --headless       # Headless mode
+  $ echelon status                             # Check progress
+  $ echelon sessions list                      # View all sessions
+
+Built by George Atkinson & Claude Opus 4.6
+Contact: george.atkinson@venin.space
+`);
 
   // `run` subcommand — `echelon run -d "..." --headless`
   // Also set as default so `echelon -d "..." --headless` works

@@ -129,6 +129,30 @@ For non-standard config locations or multi-project setups:
 echelon --config ~/configs/my-project.json
 ```
 
+## Common Commands
+
+**The only command you need to remember:**
+```bash
+echelon              # Interactive mode - handles everything for you
+```
+
+**Other useful commands:**
+```bash
+echelon --help       # Show all available commands
+echelon --version    # Show version number
+echelon status       # Check current cascade state (alias: echelon s)
+echelon --yolo       # Full autonomous mode (no approvals)
+
+# Advanced usage
+echelon -d "Your directive" --headless    # Non-interactive mode
+echelon -d "Your directive" --dry-run     # Preview without executing
+echelon init                              # Run full setup wizard
+echelon sessions list                     # View all sessions
+echelon sessions prune                    # Delete completed sessions
+```
+
+**Pro tip:** Run `echelon --help` anytime to see the full command reference with examples!
+
 ## Config Discovery
 
 When you run `echelon` without `--config`, it searches for `echelon.config.json` in this order:

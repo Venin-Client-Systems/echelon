@@ -110,7 +110,8 @@ async function runInteractiveMode(yolo = false): Promise<void> {
   console.log('  📁  Project: \x1b[1m' + detected.repo + '\x1b[0m');
   console.log('  📂  Path: \x1b[90m' + detected.path + '\x1b[0m');
   console.log('  \x1b[90m✨  Built by George Atkinson & Claude Opus 4.6\x1b[0m');
-  console.log('  \x1b[90m📧  george.atkinson@venin.space\x1b[0m\n');
+  console.log('  \x1b[90m📧  george.atkinson@venin.space\x1b[0m');
+  console.log('  \x1b[90m💡  Tip: Run \x1b[1mechelon --help\x1b[0m\x1b[90m for all commands\x1b[0m\n');
 
   // Check for existing config
   const configPath = discoverConfig(detected.path);

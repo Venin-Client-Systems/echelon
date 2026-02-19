@@ -824,9 +824,10 @@ export class Orchestrator {
     }
 
     this.logger.info('💡 Quick Commands:');
-    this.logger.info('   echelon status          # Check cascade state');
-    this.logger.info('   echelon sessions list   # View all sessions');
-    this.logger.info('   echelon --resume        # Continue where you left off');
+    this.logger.info('   echelon              # Start new cascade (interactive)');
+    this.logger.info('   echelon status       # Check cascade state');
+    this.logger.info('   echelon --help       # Show all available commands');
+    this.logger.info('   echelon sessions     # View all sessions');
     this.logger.info('─'.repeat(60) + '\n');
   }
 
