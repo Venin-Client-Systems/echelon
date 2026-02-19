@@ -732,7 +732,6 @@ ralphy/                       # Bundled parallel execution engine (Cheenoski)
 
 ### Guides
 
-- **[MIGRATION.md](MIGRATION.md)** — Upgrade guide for config changes and new features
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — Detailed system architecture, flow diagrams, and internals
 - **[SECURITY.md](SECURITY.md)** — Security model, credential handling, and best practices
 - **[LOGGING.md](LOGGING.md)** — Structured logging, debug mode, and log analysis
