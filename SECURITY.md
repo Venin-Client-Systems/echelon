@@ -1,5 +1,19 @@
 # Security Policy
 
+> **Silent infrastructure that "just works"** — Echelon is designed for AI-to-AI orchestration. AI assistants delegate complex work to Echelon's management hierarchy, which executes with the same security model as the delegating AI agent.
+
+## Security Model
+
+When AI assistants (Claude Code, Cursor, etc.) invoke Echelon:
+
+- **Inherited Permissions** — Echelon runs with the same permissions as the invoking AI agent
+- **Credential Isolation** — API keys and tokens are sanitized from all logs and transcripts
+- **Approval Gates** — Configurable approval modes let AI assistants control destructive actions
+- **Session Isolation** — Each cascade runs in an isolated session with its own state
+- **Worktree Isolation** — Code execution happens in isolated git worktrees, not the main repo
+
+**For direct human use:** The same security model applies when running `echelon` directly from the CLI.
+
 ## Supported Versions
 
 We release patches for security vulnerabilities in the following versions:
