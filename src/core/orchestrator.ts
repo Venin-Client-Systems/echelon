@@ -62,6 +62,7 @@ export class Orchestrator {
   private readonly yolo: boolean;
   private signalHandlersInstalled = false;
   private readonly boundShutdown = () => this.shutdown();
+  private budgetWarningsShown = new Set<number>(); // Track which % thresholds we've warned about
 
   constructor(opts: OrchestratorOptions) {
     // Prevent EventEmitter memory leak from multiple signal handlers
@@ -351,6 +352,9 @@ export class Orchestrator {
         costUsd: response.costUsd,
         totalUsd: this.state.totalCost,
       });
+
+      // Check for budget warnings
+      this.checkBudgetWarnings();
 
       // Parse actions from response
       const { actions, errors } = parseActions(response.content);
@@ -704,6 +708,81 @@ export class Orchestrator {
       return true;
     }
     return false;
+  }
+
+  /** Get real-time orchestrator status (command center API) */
+  getStatus(): {
+    status: string;
+    activeCascade: boolean;
+    totalCost: number;
+    directive?: string;
+    progress: {
+      messagesExchanged: number;
+      issuesCreated: number;
+      pendingApprovals: number;
+      elapsedMs: number;
+    };
+    agents: Record<string, { status: string; cost: number }>;
+  } {
+    const elapsed = this.cascadeStartedAt > 0 ? Date.now() - this.cascadeStartedAt : 0;
+
+    const agentStats: Record<string, { status: string; cost: number }> = {};
+    for (const role of ['2ic', 'eng-lead', 'team-lead'] as const) {
+      const agent = this.state.agents[role];
+      agentStats[role] = {
+        status: agent?.status ?? 'idle',
+        cost: agent?.totalCost ?? 0,
+      };
+    }
+
+    return {
+      status: this.state.status,
+      activeCascade: this.cascadeRunning,
+      totalCost: this.state.totalCost,
+      directive: this.state.directive || undefined,
+      progress: {
+        messagesExchanged: this.state.messages.length,
+        issuesCreated: this.state.issues.length,
+        pendingApprovals: this.executor.getPending().length,
+        elapsedMs: elapsed,
+      },
+      agents: agentStats,
+    };
+  }
+
+  /** Check budget and emit warnings at 75%, 90%, 95% thresholds */
+  private checkBudgetWarnings(): void {
+    const percentage = (this.state.totalCost / this.config.maxTotalBudgetUsd) * 100;
+    const thresholds = [75, 90, 95];
+
+    for (const threshold of thresholds) {
+      if (percentage >= threshold && !this.budgetWarningsShown.has(threshold)) {
+        this.budgetWarningsShown.add(threshold);
+
+        const remaining = this.config.maxTotalBudgetUsd - this.state.totalCost;
+        const urgency = threshold >= 95 ? '🚨 CRITICAL' : threshold >= 90 ? '⚠️  WARNING' : '⚡ NOTICE';
+
+        this.logger.warn(`${urgency}: Budget at ${threshold}%`, {
+          spent: `$${this.state.totalCost.toFixed(4)}`,
+          limit: `$${this.config.maxTotalBudgetUsd.toFixed(2)}`,
+          remaining: `$${remaining.toFixed(4)}`,
+          percentage: `${percentage.toFixed(1)}%`,
+        });
+
+        this.bus.emitEchelon({
+          type: 'error',
+          error: `Budget ${threshold}% exhausted — $${remaining.toFixed(2)} remaining`,
+          role: '2ic', // Default to 2ic for orchestrator-level errors
+        });
+
+        // Auto-pause at 95% if not in yolo mode
+        if (threshold >= 95 && !this.yolo) {
+          this.logger.error('Auto-pausing at 95% budget threshold. Use --yolo to override.');
+          this.state.status = 'paused';
+          saveState(this.state);
+        }
+      }
+    }
   }
 
   /** Graceful shutdown — kills Cheenoski subprocesses, saves state */

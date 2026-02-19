@@ -52,14 +52,14 @@ Here's my plan:
       });
     });
 
-    it('should parse a valid invoke_ralphy action', () => {
+    it('should parse a valid invoke_cheenoski action', () => {
       const text = `
-Let me invoke Ralphy:
+Let me invoke Cheenoski:
 
 \`\`\`json
 {
-  "action": "invoke_ralphy",
-  "label": "ralphy-1",
+  "action": "invoke_cheenoski",
+  "label": "cheenoski-1",
   "maxParallel": 3
 }
 \`\`\`
@@ -70,8 +70,8 @@ Let me invoke Ralphy:
       expect(actions).toHaveLength(1);
       expect(errors).toHaveLength(0);
       expect(actions[0]).toMatchObject({
-        action: 'invoke_ralphy',
-        label: 'ralphy-1',
+        action: 'invoke_cheenoski',
+        label: 'cheenoski-1',
         maxParallel: 3,
       });
     });

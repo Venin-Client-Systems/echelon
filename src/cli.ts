@@ -7,6 +7,7 @@ import { dirname, join } from 'path';
 export type CliResult =
   | { command: 'run'; options: CliOptions }
   | { command: 'init' }
+  | { command: 'status' }
   | { command: 'sessions'; action: 'list' | 'prune'; }
   | { command: 'sessions'; action: 'delete'; sessionId: string };
 
@@ -73,6 +74,15 @@ export function parseArgs(argv: string[]): CliResult {
     .description('Interactive config generator')
     .action(() => {
       result = { command: 'init' };
+    });
+
+  // Status subcommand (with 's' alias)
+  program
+    .command('status')
+    .alias('s')
+    .description('Show current cascade status')
+    .action(() => {
+      result = { command: 'status' };
     });
 
   // Sessions subcommand

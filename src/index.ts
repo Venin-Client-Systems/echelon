@@ -8,6 +8,7 @@ import { logger } from './lib/logger.js';
 import { Orchestrator } from './core/orchestrator.js';
 import { loadState, findLatestSession } from './core/state.js';
 import type { EchelonConfig } from './lib/types.js';
+import { LAYER_ORDER } from './lib/types.js';
 import { createInterface } from 'node:readline';
 
 const VALID_APPROVAL_MODES = new Set(['destructive', 'all', 'none']);
@@ -60,7 +61,12 @@ async function resolveConfig(cliOpts: { config: string; headless: boolean }): Pr
   }
 
   // 4. Not in a git repo at all
-  console.error('Error: Not in a git repo. Run from a project directory or use --config <path>.');
+  console.error('\n  \x1b[31m✗\x1b[0m Not in a git repository.\n');
+  console.error('  \x1b[1mQuick fix:\x1b[0m');
+  console.error('    cd /path/to/your/project  # Navigate to your project');
+  console.error('    echelon -d "your directive"');
+  console.error('\n  \x1b[1mOr:\x1b[0m Use --config to specify a config file:');
+  console.error('    echelon --config /path/to/echelon.config.json -d "your directive"\n');
   process.exit(1);
 }
 
@@ -127,7 +133,11 @@ async function runOrchestrator(opts: CliResult & { command: 'run' }): Promise<vo
   if (cliOpts.headless || cliOpts.dryRun) {
     const directive = cliOpts.directive;
     if (!directive && !cliOpts.resume) {
-      console.error('Error: --directive is required in headless/dry-run mode (unless resuming)');
+      console.error('\n  \x1b[31m✗\x1b[0m Missing directive in headless mode.\n');
+      console.error('  \x1b[1mExamples:\x1b[0m');
+      console.error('    echelon --headless -d "Implement user authentication"');
+      console.error('    echelon --dry-run -d "Fix bug #42"');
+      console.error('    echelon --resume  # Resume previous session\n');
       process.exit(1);
     }
 
@@ -195,6 +205,74 @@ async function main(): Promise<void> {
     case 'init': {
       const { runInit } = await import('./commands/init.js');
       await runInit();
+      break;
+    }
+
+    case 'status': {
+      const detected = detectGitRepo();
+      if (!detected) {
+        console.error('\n  \x1b[31m✗\x1b[0m Status requires a git repository.\n');
+        console.error('  \x1b[1mTip:\x1b[0m Navigate to your project directory first:');
+        console.error('    cd /path/to/your/project');
+        console.error('    echelon status\n');
+        process.exit(1);
+      }
+
+      const sessionId = findLatestSession(detected.repo);
+      if (!sessionId) {
+        console.log('\n  No active session found.\n');
+        process.exit(0);
+      }
+
+      const state = loadState(sessionId);
+      if (!state) {
+        console.error(`  Error: Could not load session ${sessionId}`);
+        process.exit(1);
+      }
+
+      // Calculate metrics
+      const now = Date.now();
+      const startedMs = new Date(state.startedAt).getTime();
+      const elapsedMs = now - startedMs;
+      const elapsedMin = Math.floor(elapsedMs / 60000);
+      const elapsedSec = Math.floor((elapsedMs % 60000) / 1000);
+
+      // Count pending approvals (would need executor, so skip for now)
+      const pendingCount = 0; // TODO: Load from executor state if saved
+
+      // Format output
+      console.log('\n\x1b[1m  Echelon Status\x1b[0m');
+      console.log(`  ─────────────────────────────────────────────────────`);
+      console.log(`  Session:     ${sessionId}`);
+      console.log(`  Status:      ${state.status === 'running' ? '\x1b[32m●\x1b[0m running' : state.status === 'paused' ? '\x1b[33m●\x1b[0m paused' : state.status === 'completed' ? '\x1b[32m✓\x1b[0m completed' : '\x1b[31m✗\x1b[0m failed'}`);
+      console.log(`  Directive:   ${state.directive.slice(0, 60)}${state.directive.length > 60 ? '...' : ''}`);
+      console.log(`  Total Cost:  $${state.totalCost.toFixed(4)}`);
+      console.log(`  Elapsed:     ${elapsedMin}m ${elapsedSec}s`);
+      console.log(`  ─────────────────────────────────────────────────────`);
+      console.log(`  Messages:    ${state.messages.length}`);
+      console.log(`  Issues:      ${state.issues.length}`);
+      console.log(`  Pending:     ${pendingCount} approval(s)`);
+      console.log(`  ─────────────────────────────────────────────────────`);
+      console.log(`  \x1b[1mAgent States:\x1b[0m`);
+
+      const statusEmoji = (status: string) => {
+        switch (status) {
+          case 'idle': return '\x1b[90m○\x1b[0m';
+          case 'thinking': return '\x1b[33m●\x1b[0m';
+          case 'done': return '\x1b[32m✓\x1b[0m';
+          case 'error': return '\x1b[31m✗\x1b[0m';
+          default: return '○';
+        }
+      };
+
+      for (const role of LAYER_ORDER) {
+        const agent = state.agents[role];
+        const cost = agent.totalCost > 0 ? `$${agent.totalCost.toFixed(4)}` : '--';
+        const turns = agent.turnsCompleted > 0 ? `${agent.turnsCompleted} turns` : '--';
+        console.log(`    ${statusEmoji(agent.status)} ${role.padEnd(12)} ${cost.padEnd(10)} ${turns}`);
+      }
+
+      console.log(`  ─────────────────────────────────────────────────────\n`);
       break;
     }
 
