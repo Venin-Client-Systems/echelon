@@ -130,12 +130,12 @@ export async function cleanOrphanedWorktrees(repoPath: string): Promise<number> 
 
       await git(['worktree', 'remove', '--force', wtPath], repoPath);
       cleaned++;
-      logger.info(`Cleaned orphaned worktree: ${wtPath}`);
+      logger.debug(`Cleaned orphaned worktree: ${wtPath}`);
 
       // Also delete the associated branch to prevent branch accumulation
       try {
         await git(['branch', '-D', branchName], repoPath);
-        logger.info(`Deleted orphaned branch: ${branchName}`);
+        logger.debug(`Deleted orphaned branch: ${branchName}`);
       } catch {
         // Branch may already be gone or named differently — not critical
         logger.debug(`Could not delete branch ${branchName} (may already be gone)`);
