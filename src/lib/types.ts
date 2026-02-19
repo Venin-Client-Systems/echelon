@@ -162,12 +162,14 @@ export const InvokeCheenoskiActionSchema = z.object({
 export const UpdatePlanActionSchema = z.object({
   action: z.literal('update_plan'),
   plan: z.string(),
-  workstreams: z.array(z.string()).optional(),
+  // Accept both string and object workstreams for flexibility
+  workstreams: z.array(z.union([z.string(), z.record(z.any())])).optional(),
 });
 
 export const RequestInfoActionSchema = z.object({
   action: z.literal('request_info'),
-  target: z.enum(['2ic', 'eng-lead', 'team-lead', 'ceo']),
+  // Make target optional, will default to upstream layer in executor
+  target: z.enum(['2ic', 'eng-lead', 'team-lead', 'ceo']).default('2ic'),
   question: z.string(),
 });
 
@@ -346,6 +348,16 @@ export type EchelonEvent =
   | { type: 'error'; role: AgentRole; error: string }
   | { type: 'cost_update'; role: AgentRole; costUsd: number; totalUsd: number }
   | { type: 'state_saved'; path: string }
-  | { type: 'cascade_complete'; directive: string }
+  | {
+      type: 'cascade_complete';
+      directive: string;
+      summary: {
+        issuesCreated: number;
+        actionsExecuted: number;
+        pendingApprovals: number;
+        totalCost: number;
+        duration: number;
+      };
+    }
   | { type: 'shutdown'; reason: string }
   | CheenoskiEvent;

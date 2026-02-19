@@ -27,13 +27,26 @@ export function OrgChart({ agents }: OrgChartProps) {
         const agent = agents[role];
         const { icon, color } = STATUS_ICONS[agent.status];
         const label = LAYER_LABELS[role].padEnd(MAX_LABEL_LEN);
-        const cost = agent.cost > 0 ? `$${agent.cost.toFixed(2)}` : '--';
+
+        // Show status label instead of "--" when cost is 0
+        const STATUS_LABELS: Record<AgentStatus, string> = {
+          idle: 'idle',
+          thinking: 'working',
+          executing: 'exec',
+          waiting: 'wait',
+          error: 'error',
+          done: 'done',
+        };
+        const display = agent.cost > 0
+          ? `$${agent.cost.toFixed(2)}`
+          : STATUS_LABELS[agent.status];
+
         return (
           <Box key={role} flexDirection="column">
             <Box>
               <Text color={color} bold>{icon} </Text>
               <Text color="cyan">{label}</Text>
-              <Text dimColor> {cost}</Text>
+              <Text dimColor> {display}</Text>
             </Box>
             {idx < LAYER_ORDER.length - 1 && <Text dimColor>  ↓</Text>}
           </Box>

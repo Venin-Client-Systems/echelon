@@ -23,11 +23,14 @@ function addRunOptions(cmd: Command): Command {
     .option('-v, --verbose', 'Enable debug logging', false)
     .option('--approval-mode <mode>', 'Override approval mode (destructive, all, none)')
     .option('--telegram', 'Start in Telegram bot mode', false)
-    .option('--yolo', 'Full autonomous mode — no approvals, no permission prompts', false);
+    .option('--yolo', 'Full autonomous mode — no approvals, no permission prompts', false)
+    .option('-y, --yes, --auto-approve', 'Auto-approve all actions (alias for --yolo)', false);
 }
 
 function toRunResult(cmd: Command): CliResult {
   const opts = cmd.opts();
+  // Handle --yes, --auto-approve as aliases for --yolo
+  const yoloMode = opts.yolo || opts.yes || opts.autoApprove;
   return {
     command: 'run',
     options: {
@@ -39,7 +42,7 @@ function toRunResult(cmd: Command): CliResult {
       verbose: opts.verbose as boolean,
       telegram: opts.telegram as boolean,
       approvalMode: opts.approvalMode as 'none' | 'destructive' | 'all' | undefined,
-      yolo: opts.yolo as boolean,
+      yolo: yoloMode as boolean,
     },
   };
 }

@@ -99,14 +99,20 @@ export function useEchelon(orchestrator: Orchestrator): EchelonUI {
               ...prev,
               [event.role]: { ...prev[event.role], status: event.status },
             }));
-            // Only show non-thinking statuses — thinking progress comes via agent_progress
-            if (event.status !== 'thinking') {
-              addFeedEntry(
-                LAYER_LABELS[event.role],
-                event.status === 'done' ? 'Done' : event.status,
-                ROLE_COLORS[event.role],
-              );
-            }
+            // Show status changes with descriptive messages
+            const statusMessages: Record<AgentStatus, string> = {
+              idle: 'Idle',
+              thinking: 'Starting analysis...',
+              executing: 'Executing action...',
+              waiting: 'Waiting...',
+              error: 'Error occurred',
+              done: '✓ Complete',
+            };
+            addFeedEntry(
+              LAYER_LABELS[event.role],
+              statusMessages[event.status],
+              ROLE_COLORS[event.role],
+            );
             break;
 
         case 'agent_progress': {
@@ -132,7 +138,9 @@ export function useEchelon(orchestrator: Orchestrator): EchelonUI {
                 .slice(-3); // Last 3 lines only
 
               if (lines.length > 0) {
-                addFeedEntry(LAYER_LABELS[event.role], lines.join(' | '), ROLE_COLORS[event.role]);
+                // Add ellipsis if content is truncated to show it's ongoing
+                const content = lines.length === 3 ? `${lines.join(' | ')}...` : lines.join(' | ');
+                addFeedEntry(LAYER_LABELS[event.role], content, ROLE_COLORS[event.role]);
               }
             }
             progressBufferRef.current[event.role] = '';
@@ -153,9 +161,22 @@ export function useEchelon(orchestrator: Orchestrator): EchelonUI {
           addFeedEntry('System', `Approval needed: ${event.approval.description}`, 'yellow');
           break;
 
-        case 'action_executed':
-          addFeedEntry('System', `Executed: ${event.action.action} — ${event.result.slice(0, 100)}`, 'green');
+        case 'action_executed': {
+          // Make action descriptions more readable
+          const actionLabels: Record<string, string> = {
+            create_issues: 'Created GitHub issues',
+            invoke_cheenoski: 'Started Cheenoski execution',
+            update_plan: 'Updated plan',
+            create_branch: 'Created branch',
+            request_review: 'Requested PR review',
+            request_info: 'Requested information',
+            escalate: 'Escalated to higher layer',
+          };
+          const actionLabel = actionLabels[event.action.action] || event.action.action;
+          const preview = event.result.slice(0, 100);
+          addFeedEntry('System', `✓ ${actionLabel} — ${preview}`, 'green');
           break;
+        }
 
         case 'action_rejected':
           setPending(prev => prev.filter(p => p.id !== event.approval.id));
@@ -215,10 +236,51 @@ export function useEchelon(orchestrator: Orchestrator): EchelonUI {
           addFeedEntry(LAYER_LABELS[event.role], `Error: ${event.error}`, 'red');
           break;
 
-        case 'cascade_complete':
+        case 'cascade_complete': {
           setStatus('completed');
-          addFeedEntry('System', 'Cascade complete', 'green');
+
+          // Show detailed completion summary
+          const { summary } = event;
+          const durationMin = Math.floor(summary.duration / 60000);
+          const durationSec = Math.floor((summary.duration % 60000) / 1000);
+          const timeStr = durationMin > 0 ? `${durationMin}m ${durationSec}s` : `${durationSec}s`;
+
+          addFeedEntry('System', '═══════════════════════════════════════', 'green');
+          addFeedEntry('System', '✓ COMPLETE - Here\'s what happened:', 'green');
+          addFeedEntry('System', '───────────────────────────────────────', 'green');
+
+          if (summary.issuesCreated > 0) {
+            addFeedEntry('System', `✓ Created ${summary.issuesCreated} GitHub issue${summary.issuesCreated > 1 ? 's' : ''}`, 'green');
+          } else {
+            addFeedEntry('System', '• No issues created (test/planning only)', 'yellow');
+          }
+
+          if (summary.actionsExecuted > 0) {
+            addFeedEntry('System', `✓ Executed ${summary.actionsExecuted} action${summary.actionsExecuted > 1 ? 's' : ''}`, 'green');
+          }
+
+          addFeedEntry('System', `💰 Cost: $${summary.totalCost.toFixed(4)} | ⏱ Time: ${timeStr}`, 'cyan');
+
+          if (summary.pendingApprovals > 0) {
+            addFeedEntry('System', `⚠️  ${summary.pendingApprovals} action${summary.pendingApprovals > 1 ? 's' : ''} need approval`, 'yellow');
+            addFeedEntry('System', 'Run: echelon --resume (to approve)', 'yellow');
+          }
+
+          addFeedEntry('System', '───────────────────────────────────────', 'green');
+          addFeedEntry('System', 'NEXT STEPS:', 'cyan');
+
+          if (summary.issuesCreated > 0) {
+            addFeedEntry('System', '1. Check GitHub issues in your repo', 'cyan');
+            addFeedEntry('System', '2. Review any PRs created by agents', 'cyan');
+            addFeedEntry('System', '3. Run: echelon status (to check progress)', 'cyan');
+          } else {
+            addFeedEntry('System', '1. Review the cascade output above', 'cyan');
+            addFeedEntry('System', '2. Run: echelon -d "your next task"', 'cyan');
+          }
+
+          addFeedEntry('System', '═══════════════════════════════════════', 'green');
           break;
+        }
 
         case 'shutdown':
           setStatus('paused');

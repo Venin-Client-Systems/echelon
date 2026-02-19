@@ -263,7 +263,20 @@ export class Orchestrator {
 
       this.state.status = 'completed';
       saveState(this.state);
-      this.bus.emitEchelon({ type: 'cascade_complete', directive });
+
+      // Emit detailed completion summary
+      const duration = Date.now() - new Date(this.state.startedAt).getTime();
+      this.bus.emitEchelon({
+        type: 'cascade_complete',
+        directive,
+        summary: {
+          issuesCreated: this.state.issues.length,
+          actionsExecuted: this.state.messages.filter(m => m.from !== 'ceo').length,
+          pendingApprovals: this.executor.getPending().length,
+          totalCost: this.state.totalCost,
+          duration,
+        },
+      });
 
       const costLabel = this.config.billing === 'max'
         ? `$${this.state.totalCost.toFixed(2)} (estimated)`
