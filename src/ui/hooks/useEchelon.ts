@@ -41,6 +41,8 @@ const ROLE_COLORS: Record<AgentRole, string> = {
 
 export function useEchelon(orchestrator: Orchestrator): EchelonUI {
   const feedCounterRef = useRef(0);
+  const progressBufferRef = useRef<Record<AgentRole, string>>({} as Record<AgentRole, string>);
+  const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [agents, setAgents] = useState<EchelonUI['agents']>(() => {
     const initial = {} as EchelonUI['agents'];
@@ -67,7 +69,13 @@ export function useEchelon(orchestrator: Orchestrator): EchelonUI {
       const s = sec % 60;
       setElapsed(`${min}:${s.toString().padStart(2, '0')}`);
     }, 1000);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      // Clean up progress timer
+      if (progressTimerRef.current) {
+        clearTimeout(progressTimerRef.current);
+      }
+    };
   }, []);
 
   const addFeedEntry = useCallback((source: string, text: string, color: string) => {
@@ -91,12 +99,46 @@ export function useEchelon(orchestrator: Orchestrator): EchelonUI {
               ...prev,
               [event.role]: { ...prev[event.role], status: event.status },
             }));
-            addFeedEntry(
-              LAYER_LABELS[event.role],
-              event.status === 'thinking' ? 'Thinking...' : event.status === 'done' ? 'Done' : event.status,
-              ROLE_COLORS[event.role],
-            );
+            // Only show non-thinking statuses — thinking progress comes via agent_progress
+            if (event.status !== 'thinking') {
+              addFeedEntry(
+                LAYER_LABELS[event.role],
+                event.status === 'done' ? 'Done' : event.status,
+                ROLE_COLORS[event.role],
+              );
+            }
             break;
+
+        case 'agent_progress': {
+          // Aggregate chunks per agent to avoid excessive re-renders
+          const chunk = event.content;
+          if (!chunk) break;
+
+          // Append chunk to buffer
+          progressBufferRef.current[event.role] = (progressBufferRef.current[event.role] || '') + chunk;
+
+          // Debounce: flush buffer after 500ms of inactivity
+          if (progressTimerRef.current) {
+            clearTimeout(progressTimerRef.current);
+          }
+
+          progressTimerRef.current = setTimeout(() => {
+            const buffered = progressBufferRef.current[event.role];
+            if (buffered && buffered.trim()) {
+              // Extract meaningful lines (skip empty, skip JSON output format markers)
+              const lines = buffered.split('\n')
+                .map(l => l.trim())
+                .filter(l => l && !l.startsWith('{') && !l.startsWith('}') && l !== 'result')
+                .slice(-3); // Last 3 lines only
+
+              if (lines.length > 0) {
+                addFeedEntry(LAYER_LABELS[event.role], lines.join(' | '), ROLE_COLORS[event.role]);
+              }
+            }
+            progressBufferRef.current[event.role] = '';
+          }, 500);
+          break;
+        }
 
         case 'message': {
           const label = LAYER_LABELS[event.message.from];

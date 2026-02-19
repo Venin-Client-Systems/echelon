@@ -20,7 +20,7 @@ const MAX_LABEL_LEN = Math.max(...LAYER_ORDER.map(r => LAYER_LABELS[r].length));
 
 export function OrgChart({ agents }: OrgChartProps) {
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} width={26}>
+    <Box flexDirection="column" paddingX={1} width={26}>
       <Text bold color="magenta">⚡ HIERARCHY</Text>
       <Text dimColor>─────────────────────</Text>
       {LAYER_ORDER.map((role, idx) => {

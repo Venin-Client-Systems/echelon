@@ -18,10 +18,13 @@ export function App({ orchestrator, initialDirective }: AppProps) {
   const { exit } = useApp();
   const echelon = useEchelon(orchestrator);
 
-  // Start cascade if initial directive provided
+  // Start cascade if initial directive provided OR resuming from state
   React.useEffect(() => {
     if (initialDirective) {
       echelon.sendDirective(initialDirective);
+    } else if (orchestrator.state.directive) {
+      // Resuming - continue with existing directive
+      echelon.sendDirective(orchestrator.state.directive);
     }
   }, []); // Only run once on mount
 
@@ -72,13 +75,20 @@ export function App({ orchestrator, initialDirective }: AppProps) {
   }, [echelon, exit]);
 
   return (
-    <Box flexDirection="column" height="100%">
+    <Box flexDirection="column">
       {/* Header */}
-      <Box justifyContent="space-between" paddingX={1} borderStyle="round" borderColor="cyan">
-        <Text bold color="magenta">VENIN</Text>
-        <Text bold color="cyan"> Echelon</Text>
-        <Text color="gray"> | </Text>
-        <Text dimColor>{echelon.directive?.slice(0, 60) || 'No directive'}{echelon.directive && echelon.directive.length > 60 ? '...' : ''}</Text>
+      <Box flexDirection="column">
+        <Box justifyContent="space-between" paddingX={1}>
+          <Text>
+            <Text bold color="magenta">VENIN</Text>
+            <Text bold color="cyan"> Echelon</Text>
+            <Text color="gray"> │ </Text>
+            <Text dimColor>{echelon.directive?.slice(0, 60) || 'No directive'}{echelon.directive && echelon.directive.length > 60 ? '...' : ''}</Text>
+          </Text>
+        </Box>
+        <Box paddingX={1}>
+          <Text dimColor>{'─'.repeat(process.stdout.columns || 80)}</Text>
+        </Box>
       </Box>
 
       {/* Main area: sidebar + feed */}
@@ -113,7 +123,7 @@ export function App({ orchestrator, initialDirective }: AppProps) {
       {/* Input */}
       <Input
         onSubmit={handleInput}
-        disabled={echelon.status === 'completed' || echelon.status === 'failed'}
+        disabled={(echelon.status === 'completed' || echelon.status === 'failed') && echelon.pendingApprovals.length === 0}
       />
     </Box>
   );

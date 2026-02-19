@@ -33,7 +33,7 @@ export function StatusBar({ cost, budget, elapsed, repo, status, pendingCount }:
   const budgetPercent = budget > 0 ? Math.round((cost / budget) * 100) : 0;
 
   return (
-    <Box paddingX={1} justifyContent="space-between" borderStyle="round" borderColor="gray">
+    <Box paddingX={1} justifyContent="space-between">
       <Text>
         <Text dimColor>💰 </Text>
         <Text bold color={costColor(cost, budget)}>${cost.toFixed(4)}</Text>

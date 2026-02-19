@@ -336,6 +336,7 @@ export interface CliOptions {
 
 export type EchelonEvent =
   | { type: 'agent_status'; role: AgentRole; status: AgentStatus }
+  | { type: 'agent_progress'; role: AgentRole; content: string }
   | { type: 'message'; message: LayerMessage }
   | { type: 'action_pending'; approval: PendingApproval }
   | { type: 'action_executed'; action: Action; result: string }

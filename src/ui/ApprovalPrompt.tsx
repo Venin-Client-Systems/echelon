@@ -14,13 +14,11 @@ export function ApprovalPrompt({ approvals, onApprove, onReject }: ApprovalPromp
   return (
     <Box
       flexDirection="column"
-      borderStyle="round"
-      borderColor="yellow"
       paddingX={1}
       marginY={0}
     >
       <Text bold color="yellow">
-        Pending Approvals ({approvals.length})
+        ⚠️  Pending Approvals ({approvals.length})
       </Text>
       {approvals.map(a => (
         <Box key={a.id}>
