@@ -11,7 +11,8 @@ export type CliResult =
   | { command: 'tutorial' }
   | { command: 'interactive'; yolo: boolean }
   | { command: 'sessions'; action: 'list' | 'prune'; }
-  | { command: 'sessions'; action: 'delete'; sessionId: string };
+  | { command: 'sessions'; action: 'delete'; sessionId: string }
+  | { command: 'analytics'; sessionId?: string };
 
 function addRunOptions(cmd: Command): Command {
   return cmd
@@ -117,6 +118,14 @@ Contact: george.atkinson@venin.space
     .description('Interactive 2-minute tutorial for new users')
     .action(() => {
       result = { command: 'tutorial' };
+    });
+
+  // Analytics subcommand
+  program
+    .command('analytics [session-id]')
+    .description('Show detailed session analytics and metrics')
+    .action((sessionId?: string) => {
+      result = { command: 'analytics', sessionId };
     });
 
   // Sessions subcommand

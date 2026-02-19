@@ -528,6 +528,33 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'analytics': {
+      const detected = detectGitRepo();
+      if (!detected) {
+        console.error('\n  \x1b[31m✗\x1b[0m Analytics requires a git repository.\n');
+        process.exit(1);
+      }
+
+      // Get session ID (from arg or latest)
+      const sessionId = result.sessionId || findLatestSession(detected.repo);
+      if (!sessionId) {
+        console.log('\n  No session found.\n');
+        process.exit(0);
+      }
+
+      const state = loadState(sessionId);
+      if (!state) {
+        console.error(`  Error: Could not load session ${sessionId}`);
+        process.exit(1);
+      }
+
+      // Calculate and display metrics
+      const { calculateSessionMetrics, formatSessionMetrics } = await import('./lib/analytics.js');
+      const metrics = calculateSessionMetrics(state);
+      console.log('\n' + formatSessionMetrics(metrics) + '\n');
+      break;
+    }
+
     case 'sessions': {
       const { printSessions, pruneCompletedSessions, deleteSession } =
         await import('./core/session.js');
