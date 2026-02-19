@@ -111,6 +111,19 @@ async function runOrchestrator(opts: CliResult & { command: 'run' }): Promise<vo
     state: state ?? undefined,
   });
 
+  // Enable dashboard if --dashboard flag is set
+  if (cliOpts.dashboard) {
+    if (!config.dashboard) {
+      // Auto-enable dashboard with default config
+      (config as { dashboard?: { enabled: boolean; port: number } }).dashboard = {
+        enabled: true,
+        port: 3030,
+      };
+    } else {
+      (config.dashboard as { enabled: boolean }).enabled = true;
+    }
+  }
+
   // Telegram bot mode — start bot and return (bot handles its own lifecycle)
   if (cliOpts.telegram) {
     try {
@@ -118,7 +131,7 @@ async function runOrchestrator(opts: CliResult & { command: 'run' }): Promise<vo
       await startBot(config);
     } catch (err) {
       logger.error('Telegram bot failed to start', { error: err instanceof Error ? err.message : String(err) });
-      orchestrator.shutdown();
+      await orchestrator.shutdown();
       throw err;
     }
     return;
@@ -134,16 +147,16 @@ async function runOrchestrator(opts: CliResult & { command: 'run' }): Promise<vo
     // Install cleanup handler for headless mode.
     // orchestrator.shutdown() no longer calls process.exit() (to allow finally blocks),
     // so the signal handlers must exit the process after cleanup.
-    const cleanup = (signal?: string) => {
+    const cleanup = async (signal?: string) => {
       logger.info(`Cleaning up orchestrator (${signal ?? 'exit'})...`);
-      orchestrator.shutdown();
+      await orchestrator.shutdown();
       if (signal === 'SIGINT' || signal === 'SIGTERM') {
         process.exit(0);
       }
     };
-    process.once('exit', () => cleanup('exit'));
-    process.once('SIGINT', () => cleanup('SIGINT'));
-    process.once('SIGTERM', () => cleanup('SIGTERM'));
+    process.once('exit', () => void cleanup('exit'));
+    process.once('SIGINT', () => void cleanup('SIGINT'));
+    process.once('SIGTERM', () => void cleanup('SIGTERM'));
 
     try {
       if (directive) {
@@ -187,7 +200,7 @@ async function runOrchestrator(opts: CliResult & { command: 'run' }): Promise<vo
       );
     } catch (err) {
       logger.error('TUI failed to start', { error: err instanceof Error ? err.message : String(err) });
-      orchestrator.shutdown();
+      await orchestrator.shutdown();
       throw err;
     }
   }

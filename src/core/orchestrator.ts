@@ -14,6 +14,7 @@ import { ActionExecutor } from './action-executor.js';
 import { createState, saveState, loadState, updateAgentStatus } from './state.js';
 import { checkLayerBudget, checkTotalBudget, budgetSummary } from './recovery.js';
 import { githubClient } from '../lib/github-client.js';
+import { startDashboardServer, stopDashboardServer, type DashboardProcess } from '../dashboard/lifecycle.js';
 
 /**
  * Options for creating an Orchestrator instance.
@@ -61,7 +62,11 @@ export class Orchestrator {
   private readonly dryRun: boolean;
   private readonly yolo: boolean;
   private signalHandlersInstalled = false;
-  private readonly boundShutdown = () => this.shutdown();
+  private readonly boundShutdown = () => {
+    // Fire-and-forget async shutdown on signal
+    void this.shutdown();
+  };
+  private dashboardProcess: DashboardProcess | null = null;
 
   constructor(opts: OrchestratorOptions) {
     this.config = opts.config;
@@ -110,6 +115,27 @@ export class Orchestrator {
   }
 
   /**
+   * Start the dashboard server if enabled in config.
+   *
+   * @throws {Error} If dashboard fails to start
+   */
+  async startDashboard(): Promise<void> {
+    if (!this.config.dashboard?.enabled) {
+      return;
+    }
+
+    const port = this.config.dashboard.port ?? 3030;
+
+    try {
+      this.dashboardProcess = await startDashboardServer(this, port);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error('Failed to start dashboard server', { error: errorMsg });
+      throw err;
+    }
+  }
+
+  /**
    * Run the full hierarchical cascade for a directive.
    *
    * Executes each layer sequentially (CEO → 2IC → Eng Lead → Team Lead),
@@ -150,6 +176,9 @@ export class Orchestrator {
       process.on('SIGTERM', this.boundShutdown);
       this.signalHandlersInstalled = true;
     }
+
+    // Start dashboard server before cascade if enabled
+    await this.startDashboard();
 
     try {
       // Phase 1: CEO → 2IC (strategy)
@@ -781,15 +810,28 @@ export class Orchestrator {
   /**
    * Gracefully shutdown the orchestrator.
    *
-   * Terminates all Cheenoski subprocesses, saves state, writes transcript summary,
-   * and removes signal handlers. The session can be resumed later with --resume.
+   * Terminates all Cheenoski subprocesses, stops dashboard server,
+   * saves state, writes transcript summary, and removes signal handlers.
+   * The session can be resumed later with --resume.
    *
    * Called automatically on SIGINT/SIGTERM.
    */
-  shutdown(): void {
+  async shutdown(): Promise<void> {
     if (this.shuttingDown) return;
     this.shuttingDown = true;
-    this.logger.info('Shutting down — killing subprocesses, saving state...');
+    this.logger.info('Shutting down — killing subprocesses, stopping dashboard, saving state...');
+
+    // Stop dashboard server if running
+    if (this.dashboardProcess) {
+      try {
+        await stopDashboardServer(this.dashboardProcess);
+        this.dashboardProcess = null;
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        this.logger.error('Error stopping dashboard during shutdown', { error: errorMsg });
+        // Continue with shutdown even if dashboard stop fails
+      }
+    }
 
     // Kill Cheenoski subprocesses
     this.executor.killAll();
