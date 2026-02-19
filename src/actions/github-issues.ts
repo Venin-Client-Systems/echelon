@@ -40,15 +40,54 @@ async function ensureLabels(labels: string[], repo: string): Promise<void> {
 /** Fetch open issue titles from the repo to avoid creating duplicates */
 async function fetchOpenIssueTitles(repo: string): Promise<Set<string>> {
   try {
-    const { stdout } = await execFileAsync('gh', [
-      'issue', 'list', '--repo', repo, '--state', 'open',
-      '--limit', '200', '--json', 'title',
-    ], { encoding: 'utf-8' });
+    // Use retry logic for rate limit resilience
+    const { stdout } = await withGitHubRetry(
+      async () => execFileAsync('gh', [
+        'issue', 'list', '--repo', repo, '--state', 'open',
+        '--limit', '200', '--json', 'title',
+      ], { encoding: 'utf-8' }),
+      'fetch existing issues',
+    );
     const raw = JSON.parse(stdout) as { title: string }[];
     return new Set(raw.map(i => i.title.toLowerCase().trim()));
-  } catch {
+  } catch (err) {
+    logger.warn(`Failed to fetch existing issues for dedup: ${err}`);
     return new Set();
   }
+}
+
+/** Retry GitHub CLI commands with exponential backoff for rate limits */
+async function withGitHubRetry<T>(
+  operation: () => Promise<T>,
+  operationName: string,
+  maxRetries = 3,
+): Promise<T> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      lastError = err instanceof Error ? err : new Error(errorMsg);
+
+      const isRateLimit = errorMsg.includes('rate limit') ||
+                          errorMsg.includes('403') ||
+                          errorMsg.includes('429');
+
+      if (isRateLimit && attempt < maxRetries) {
+        const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 16000);
+        logger.warn(`${operationName}: rate limit, retrying in ${delayMs}ms`, { attempt, maxRetries });
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      } else if (attempt < maxRetries) {
+        const delayMs = 500;
+        logger.warn(`${operationName}: failed, retrying`, { attempt, error: errorMsg });
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 /**

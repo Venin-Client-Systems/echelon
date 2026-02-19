@@ -125,6 +125,17 @@ export class Orchestrator {
    * @throws {Error} If cascade fails unrecoverably
    */
   async runCascade(directive: string): Promise<void> {
+    // Validate directive length
+    if (directive.length > 10000) {
+      throw new Error(
+        `Directive too long (${directive.length} chars, max 10,000). ` +
+        'Please summarize or break into smaller tasks.'
+      );
+    }
+    if (!directive.trim()) {
+      throw new Error('Directive cannot be empty');
+    }
+
     if (this.cascadeRunning) {
       this.logger.warn('Cascade already running — ignoring duplicate call');
       return;

@@ -9,6 +9,12 @@ export interface HealthStatus {
   lastActivity?: number;
   messageCount?: number;
   errorCount?: number;
+  orchestrator?: {
+    status: string;
+    activeCascade: boolean;
+    totalCost: number;
+    directive?: string;
+  };
 }
 
 export class HealthServer {
@@ -18,6 +24,12 @@ export class HealthServer {
     lastActivity: number;
     messageCount: number;
     errorCount: number;
+  };
+  private orchestratorStatus?: {
+    status: string;
+    activeCascade: boolean;
+    totalCost: number;
+    directive?: string;
   };
 
   constructor(private config: TelegramHealthConfig) {
@@ -109,13 +121,22 @@ export class HealthServer {
     this.stats.errorCount++;
   }
 
+  updateOrchestratorStatus(status: {
+    status: string;
+    activeCascade: boolean;
+    totalCost: number;
+    directive?: string;
+  }): void {
+    this.orchestratorStatus = status;
+  }
+
   private getStatus(): HealthStatus {
     const now = Date.now();
     const uptime = now - this.startTime;
     const timeSinceActivity = now - this.stats.lastActivity;
     const isHealthy = timeSinceActivity < 5 * 60 * 1000; // 5 minutes
 
-    return {
+    const status: HealthStatus = {
       status: isHealthy ? 'healthy' : 'unhealthy',
       uptime,
       mode: 'telegram',
@@ -123,5 +144,11 @@ export class HealthServer {
       messageCount: this.stats.messageCount,
       errorCount: this.stats.errorCount,
     };
+
+    if (this.orchestratorStatus) {
+      status.orchestrator = this.orchestratorStatus;
+    }
+
+    return status;
   }
 }
