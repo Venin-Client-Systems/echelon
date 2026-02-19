@@ -63,6 +63,8 @@ export class Orchestrator {
   private signalHandlersInstalled = false;
   private readonly boundShutdown = () => this.shutdown();
   private budgetWarningsShown = new Set<number>(); // Track which % thresholds we've warned about
+  private zeroCostCallCount = 0; // Track calls returning $0 (subscription/credits detection)
+  private costTrackingAvailable = true; // Flag if USD cost tracking is working
 
   constructor(opts: OrchestratorOptions) {
     // Prevent EventEmitter memory leak from multiple signal handlers
@@ -349,6 +351,24 @@ export class Orchestrator {
       agentState.turnsCompleted++;
       this.state.totalCost += response.costUsd;
 
+      // Detect zero-cost pattern (subscription/credits-based accounts)
+      if (response.costUsd === 0) {
+        this.zeroCostCallCount++;
+        if (this.zeroCostCallCount >= 3 && this.costTrackingAvailable) {
+          this.costTrackingAvailable = false;
+          this.logger.warn('⚠️  Budget tracking unavailable — subscription/credits-based account detected');
+          this.logger.warn('    API is not returning cost data. Using turn limits for safety.');
+          this.logger.warn('    Set high maxTotalBudgetUsd in config to disable budget warnings.');
+
+          // Emit warning to UI
+          this.bus.emitEchelon({
+            type: 'error',
+            error: '⚠️  Budget tracking unavailable (subscription account detected). Using turn limits instead.',
+            role: '2ic',
+          });
+        }
+      }
+
       this.bus.emitEchelon({
         type: 'cost_update',
         role,
@@ -356,8 +376,10 @@ export class Orchestrator {
         totalUsd: this.state.totalCost,
       });
 
-      // Check for budget warnings
-      this.checkBudgetWarnings();
+      // Check for budget warnings (skip if cost tracking unavailable)
+      if (this.costTrackingAvailable) {
+        this.checkBudgetWarnings();
+      }
 
       // Parse actions from response
       const { actions, errors } = parseActions(response.content);

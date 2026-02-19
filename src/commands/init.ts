@@ -461,6 +461,12 @@ export async function runInit(): Promise<void> {
   console.log('  \x1b[2m└─────────────────────────────────────────┘\x1b[0m');
 
   console.log('');
+  console.log('  \x1b[33m💡 Budget Tracking:\x1b[0m');
+  console.log('     Budget limits work with Anthropic API (pay-as-you-go).');
+  console.log('     If using Claude.ai Pro/Team, Echelon will auto-detect and');
+  console.log('     use turn limits instead for safety.');
+
+  console.log('');
   console.log('  \x1b[1mNext steps:\x1b[0m');
   console.log('');
   console.log('  \x1b[36m1.\x1b[0m Test with a dry run:');

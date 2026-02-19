@@ -16,14 +16,26 @@ export function sessionDir(sessionId: string): string {
 }
 
 export function ensureDir(dir: string): void {
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  if (!existsSync(dir)) {
+    try {
+      mkdirSync(dir, { recursive: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to create directory ${dir}: ${msg}. Check file permissions.`);
+    }
+  }
 }
 
 export function atomicWriteJSON(filePath: string, data: unknown): void {
-  ensureDir(dirname(filePath));
-  const tmp = filePath + '.tmp';
-  writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
-  renameSync(tmp, filePath);
+  try {
+    ensureDir(dirname(filePath));
+    const tmp = filePath + '.tmp';
+    writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
+    renameSync(tmp, filePath);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to write ${filePath}: ${msg}`);
+  }
 }
 
 export function appendToFile(filePath: string, content: string): void {
