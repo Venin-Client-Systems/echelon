@@ -62,8 +62,15 @@ export class Orchestrator {
   private readonly yolo: boolean;
   private signalHandlersInstalled = false;
   private readonly boundShutdown = () => this.shutdown();
+  private budgetWarningsShown = new Set<number>(); // Track which % thresholds we've warned about
+  private zeroCostCallCount = 0; // Track calls returning $0 (subscription/credits detection)
+  private costTrackingAvailable = true; // Flag if USD cost tracking is working
 
   constructor(opts: OrchestratorOptions) {
+    // Prevent EventEmitter memory leak from multiple signal handlers
+    // (orchestrator + cheenoski both register SIGINT/SIGTERM)
+    process.setMaxListeners(20);
+
     this.config = opts.config;
     this.dryRun = opts.cliOptions.dryRun;
     this.yolo = opts.cliOptions.yolo ?? false;
@@ -121,6 +128,17 @@ export class Orchestrator {
    * @throws {Error} If cascade fails unrecoverably
    */
   async runCascade(directive: string): Promise<void> {
+    // Validate directive length
+    if (directive.length > 10000) {
+      throw new Error(
+        `Directive too long (${directive.length} chars, max 10,000). ` +
+        'Please summarize or break into smaller tasks.'
+      );
+    }
+    if (!directive.trim()) {
+      throw new Error('Directive cannot be empty');
+    }
+
     if (this.cascadeRunning) {
       this.logger.warn('Cascade already running — ignoring duplicate call');
       return;
@@ -136,6 +154,9 @@ export class Orchestrator {
       this.cascadeRunning = false;
       return;
     }
+
+    // Prerequisite checks — fail fast if missing required tools
+    await this.checkPrerequisites();
 
     // Write transcript header on new sessions
     if (this.state.messages.length === 0) {
@@ -255,6 +276,9 @@ export class Orchestrator {
       });
       this.logger.info(`Budget: ${budgetSummary(this.state, this.config)}`);
 
+      // Show helpful next steps
+      this.printNextSteps();
+
       this.transcript.writeSummary(this.state.totalCost, new Date(this.state.startedAt));
     } finally {
       this.cascadeRunning = false;
@@ -327,12 +351,35 @@ export class Orchestrator {
       agentState.turnsCompleted++;
       this.state.totalCost += response.costUsd;
 
+      // Detect zero-cost pattern (subscription/credits-based accounts)
+      if (response.costUsd === 0) {
+        this.zeroCostCallCount++;
+        if (this.zeroCostCallCount >= 3 && this.costTrackingAvailable) {
+          this.costTrackingAvailable = false;
+          this.logger.warn('⚠️  Budget tracking unavailable — subscription/credits-based account detected');
+          this.logger.warn('    API is not returning cost data. Using turn limits for safety.');
+          this.logger.warn('    Set high maxTotalBudgetUsd in config to disable budget warnings.');
+
+          // Emit warning to UI
+          this.bus.emitEchelon({
+            type: 'error',
+            error: '⚠️  Budget tracking unavailable (subscription account detected). Using turn limits instead.',
+            role: '2ic',
+          });
+        }
+      }
+
       this.bus.emitEchelon({
         type: 'cost_update',
         role,
         costUsd: response.costUsd,
         totalUsd: this.state.totalCost,
       });
+
+      // Check for budget warnings (skip if cost tracking unavailable)
+      if (this.costTrackingAvailable) {
+        this.checkBudgetWarnings();
+      }
 
       // Parse actions from response
       const { actions, errors } = parseActions(response.content);
@@ -396,6 +443,10 @@ export class Orchestrator {
       } else {
         layerLogger.error(`Layer ${LAYER_LABELS[role]} failed, cascade aborted`, { error: errMsg });
       }
+
+      // Show recovery suggestions
+      this.printRecoverySuggestions(role, errMsg);
+
       return null;
     }
   }
@@ -607,6 +658,53 @@ export class Orchestrator {
     return true;
   }
 
+  /** Check prerequisites (gh, claude CLI) before starting cascade */
+  private async checkPrerequisites(): Promise<void> {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const execFileAsync = promisify(execFile);
+
+    // Check for gh CLI
+    try {
+      await execFileAsync('gh', ['--version'], { timeout: 5000 });
+    } catch (err) {
+      const msg = err instanceof Error && 'code' in err ? (err as any).code : '';
+      if (msg === 'ENOENT') {
+        throw new Error(
+          'GitHub CLI (gh) not found. Install: https://cli.github.com\n' +
+          'This is required for issue creation and repo operations.'
+        );
+      }
+      throw new Error(`GitHub CLI check failed: ${err}`);
+    }
+
+    // Check if gh is authenticated
+    try {
+      await execFileAsync('gh', ['auth', 'status'], { timeout: 5000 });
+    } catch {
+      throw new Error(
+        'GitHub CLI not authenticated. Run: gh auth login\n' +
+        'This is required for issue creation and repo operations.'
+      );
+    }
+
+    // Check for claude CLI
+    try {
+      await execFileAsync('claude', ['--version'], { timeout: 5000 });
+    } catch (err) {
+      const msg = err instanceof Error && 'code' in err ? (err as any).code : '';
+      if (msg === 'ENOENT') {
+        throw new Error(
+          'Claude Code CLI not found. Install: npm install -g @anthropic-ai/claude-code\n' +
+          'This is required for AI agent execution.'
+        );
+      }
+      throw new Error(`Claude CLI check failed: ${err}`);
+    }
+
+    this.logger.debug('Prerequisites check passed (gh, claude CLI available)');
+  }
+
   /** Print dry-run information */
   private printDryRun(directive: string): void {
     const isMax = this.config.billing === 'max';
@@ -639,6 +737,155 @@ export class Orchestrator {
       return true;
     }
     return false;
+  }
+
+  /** Get real-time orchestrator status (command center API) */
+  getStatus(): {
+    status: string;
+    activeCascade: boolean;
+    totalCost: number;
+    directive?: string;
+    progress: {
+      messagesExchanged: number;
+      issuesCreated: number;
+      pendingApprovals: number;
+      elapsedMs: number;
+    };
+    agents: Record<string, { status: string; cost: number }>;
+  } {
+    const elapsed = this.cascadeStartedAt > 0 ? Date.now() - this.cascadeStartedAt : 0;
+
+    const agentStats: Record<string, { status: string; cost: number }> = {};
+    for (const role of ['2ic', 'eng-lead', 'team-lead'] as const) {
+      const agent = this.state.agents[role];
+      agentStats[role] = {
+        status: agent?.status ?? 'idle',
+        cost: agent?.totalCost ?? 0,
+      };
+    }
+
+    return {
+      status: this.state.status,
+      activeCascade: this.cascadeRunning,
+      totalCost: this.state.totalCost,
+      directive: this.state.directive || undefined,
+      progress: {
+        messagesExchanged: this.state.messages.length,
+        issuesCreated: this.state.issues.length,
+        pendingApprovals: this.executor.getPending().length,
+        elapsedMs: elapsed,
+      },
+      agents: agentStats,
+    };
+  }
+
+  /** Print recovery suggestions when a layer fails */
+  private printRecoverySuggestions(role: AgentRole, error: string): void {
+    const errorLower = error.toLowerCase();
+
+    this.logger.info('\n' + '─'.repeat(60));
+    this.logger.info('🔧 Recovery Suggestions:\n');
+
+    // Detect common error patterns and suggest fixes
+    if (errorLower.includes('rate limit') || errorLower.includes('429')) {
+      this.logger.info('   • Rate limit hit. Wait 60s and run: echelon --resume');
+      this.logger.info('   • Or use --yolo mode for auto-retry with backoff\n');
+    } else if (errorLower.includes('quota') || errorLower.includes('insufficient_quota')) {
+      this.logger.info('   • API quota exceeded. Check limits at console.anthropic.com');
+      this.logger.info('   • Or switch to lower-cost model in config (sonnet → haiku)\n');
+    } else if (errorLower.includes('timeout') || errorLower.includes('timed out')) {
+      this.logger.info('   • Agent timeout. Increase maxTurns or timeoutMs in config');
+      this.logger.info('   • Or simplify the directive and run: echelon --resume\n');
+    } else if (errorLower.includes('budget') || errorLower.includes('cost')) {
+      this.logger.info('   • Budget exceeded. Increase maxTotalBudgetUsd in config');
+      this.logger.info('   • Or review state with: echelon status\n');
+    } else if (errorLower.includes('gh:') || errorLower.includes('github')) {
+      this.logger.info('   • GitHub CLI error. Check: gh auth status');
+      this.logger.info('   • Or re-authenticate: gh auth login\n');
+    } else if (errorLower.includes('anthropic') || errorLower.includes('api key')) {
+      this.logger.info('   • API key issue. Check: echo $ANTHROPIC_API_KEY');
+      this.logger.info('   • Or set it: export ANTHROPIC_API_KEY=sk-...\n');
+    } else {
+      this.logger.info('   • Check logs for details: ~/.echelon/logs/');
+      this.logger.info('   • Resume session: echelon --resume');
+      this.logger.info('   • Start fresh: echelon -d "your directive"\n');
+    }
+
+    this.logger.info('💡 Debug Commands:');
+    this.logger.info('   echelon status          # Check current state');
+    this.logger.info('   echelon sessions list   # View all sessions');
+    this.logger.info('   echelon --resume        # Resume from checkpoint');
+    this.logger.info('─'.repeat(60) + '\n');
+  }
+
+  /** Print helpful next steps after cascade completion */
+  private printNextSteps(): void {
+    const hasIssues = this.state.issues.length > 0;
+    const hasPending = this.executor.getPending().length > 0;
+
+    this.logger.info('\n' + '─'.repeat(60));
+    this.logger.info('✓ Cascade complete! What\'s next?\n');
+
+    if (hasPending) {
+      this.logger.info('📋 Pending Approvals:');
+      const pending = this.executor.getPending();
+      for (const p of pending.slice(0, 3)) { // Show first 3
+        this.logger.info(`   • ${p.description}`);
+      }
+      if (pending.length > 3) {
+        this.logger.info(`   ... and ${pending.length - 3} more\n`);
+      }
+      this.logger.info('   Run: echelon --resume  (then approve actions in TUI)\n');
+    }
+
+    if (hasIssues) {
+      this.logger.info('🎯 Next Steps:');
+      this.logger.info('   1. Check the GitHub issues created for your project');
+      this.logger.info('   2. Review and merge any PRs from Cheenoski');
+      this.logger.info(`   3. Run: echelon status  (check progress anytime)\n`);
+    }
+
+    this.logger.info('💡 Quick Commands:');
+    this.logger.info('   echelon              # Start new cascade (interactive)');
+    this.logger.info('   echelon status       # Check cascade state');
+    this.logger.info('   echelon --help       # Show all available commands');
+    this.logger.info('   echelon sessions     # View all sessions');
+    this.logger.info('─'.repeat(60) + '\n');
+  }
+
+  /** Check budget and emit warnings at 75%, 90%, 95% thresholds */
+  private checkBudgetWarnings(): void {
+    const percentage = (this.state.totalCost / this.config.maxTotalBudgetUsd) * 100;
+    const thresholds = [75, 90, 95];
+
+    for (const threshold of thresholds) {
+      if (percentage >= threshold && !this.budgetWarningsShown.has(threshold)) {
+        this.budgetWarningsShown.add(threshold);
+
+        const remaining = this.config.maxTotalBudgetUsd - this.state.totalCost;
+        const urgency = threshold >= 95 ? '🚨 CRITICAL' : threshold >= 90 ? '⚠️  WARNING' : '⚡ NOTICE';
+
+        this.logger.warn(`${urgency}: Budget at ${threshold}%`, {
+          spent: `$${this.state.totalCost.toFixed(4)}`,
+          limit: `$${this.config.maxTotalBudgetUsd.toFixed(2)}`,
+          remaining: `$${remaining.toFixed(4)}`,
+          percentage: `${percentage.toFixed(1)}%`,
+        });
+
+        this.bus.emitEchelon({
+          type: 'error',
+          error: `Budget ${threshold}% exhausted — $${remaining.toFixed(2)} remaining`,
+          role: '2ic', // Default to 2ic for orchestrator-level errors
+        });
+
+        // Auto-pause at 95% if not in yolo mode
+        if (threshold >= 95 && !this.yolo) {
+          this.logger.error('Auto-pausing at 95% budget threshold. Use --yolo to override.');
+          this.state.status = 'paused';
+          saveState(this.state);
+        }
+      }
+    }
   }
 
   /** Graceful shutdown — kills Cheenoski subprocesses, saves state */

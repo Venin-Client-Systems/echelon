@@ -13,11 +13,16 @@ const VALID_APPROVAL_MODES = new Set(['destructive', 'all', 'none']);
 
 async function ask(prompt: string, defaultValue?: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const suffix = defaultValue ? ` \x1b[2m(${defaultValue})\x1b[0m` : '';
+  const suffix = defaultValue ? ` \x1b[2m[press Enter for: ${defaultValue}]\x1b[0m` : '';
   return new Promise(res => {
     rl.question(`${prompt}${suffix}: `, answer => {
       rl.close();
-      res(answer.trim() || defaultValue || '');
+      const selected = answer.trim() || defaultValue || '';
+      // Show what was selected if default was used
+      if (!answer.trim() && defaultValue) {
+        console.log(`  \x1b[2m→ Using default: ${defaultValue}\x1b[0m`);
+      }
+      res(selected);
     });
   });
 }
@@ -195,6 +200,39 @@ export async function runInit(): Promise<void> {
     }
   }
 
+  // ── Validate GitHub Token Permissions ───────────────────────────
+  // Check if gh is authenticated and has necessary scopes
+  if (checks[3].authenticated) {
+    try {
+      const tokenInfo = execFileSync('gh', ['auth', 'status', '-t'], {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 5000
+      });
+
+      // Check for required scopes: repo, workflow, project
+      const hasRepo = tokenInfo.includes('repo');
+      const hasWorkflow = tokenInfo.includes('workflow');
+
+      if (!hasRepo) {
+        console.log('');
+        info('GitHub token missing "repo" scope (required for issue creation).');
+        info('Re-authenticate: gh auth login --scopes repo,workflow');
+        console.log('');
+      }
+
+      if (!hasWorkflow) {
+        console.log('');
+        info('GitHub token missing "workflow" scope (recommended for CI/CD).');
+        info('This is optional but recommended for full functionality.');
+        console.log('');
+      }
+    } catch {
+      // gh auth status -t failed, token might be expired or scopes not readable
+      // Continue anyway, we already checked basic auth earlier
+    }
+  }
+
   // ── Step 2: Project ─────────────────────────────────────────────
 
   heading('Step 2 — Project');
@@ -252,9 +290,112 @@ export async function runInit(): Promise<void> {
 
   const approvalMode = await askValidated('  Approval mode', VALID_APPROVAL_MODES, 'destructive');
 
+  // ── Step 5: Telegram (Optional) ─────────────────────────────────
+
+  heading('Step 5 — Telegram Bot (Optional)');
+
+  dim('Run Echelon as a Telegram bot for mobile-first operation.');
+  dim('Leave blank to skip Telegram setup.');
+  console.log('');
+
+  const setupTelegram = await askYesNo('  Configure Telegram bot?', false);
+  let telegramConfig: any = undefined;
+
+  if (setupTelegram) {
+    console.log('');
+    dim('Get your bot token from @BotFather on Telegram.');
+    dim('Get your chat ID by messaging your bot and checking logs.');
+    console.log('');
+
+    const botToken = await ask('  Bot token', '');
+    const chatId = await ask('  Chat ID', '');
+    const allowedUsers = await ask('  Allowed user IDs (comma-separated)', '');
+
+    // Validate bot token format: should be like "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+    if (botToken && !/^\d+:[\w-]+$/.test(botToken)) {
+      console.log('');
+      info('⚠️  Invalid token format. Should be "123456:ABC..." from @BotFather');
+      info('Skipping Telegram setup. Run echelon init again to retry.');
+      console.log('');
+    } else if (botToken && chatId) {
+      // Validate chat ID is numeric
+      if (!/^\d+$/.test(chatId)) {
+        console.log('');
+        info('⚠️  Invalid chat ID format. Should be numeric (e.g., "123456789")');
+        info('Get it from: https://api.telegram.org/bot<TOKEN>/getUpdates');
+        info('Skipping Telegram setup. Run echelon init again to retry.');
+        console.log('');
+      } else {
+        telegramConfig = {
+          token: botToken,
+          chatId: chatId,
+          allowedUserIds: allowedUsers ? allowedUsers.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id)) : [],
+          health: {
+            enabled: true,
+            port: 3000,
+          },
+        };
+        ok('Telegram configured');
+      }
+    } else {
+      info('Skipping Telegram (token or chat ID missing)');
+    }
+  }
+
+  // ── Step 6: Engineer Configuration ──────────────────────────────
+
+  heading('Step 6 — Engineer Configuration');
+
+  dim('Cheenoski supports multiple AI backends (engines) for code execution.');
+  dim('Default: claude (Claude Code). Others: opencode, codex, cursor, qwen.');
+  console.log('');
+
+  const engineName = await ask('  Primary engine', 'claude');
+  if (!['claude', 'opencode', 'codex', 'cursor', 'qwen'].includes(engineName)) {
+    info(`Unknown engine "${engineName}", defaulting to claude`);
+  }
+
+  console.log('');
+  dim('Billing mode affects how Anthropic API usage is calculated:');
+  dim('  • api  — Standard API pricing (recommended)');
+  dim('  • max  — Claude Pro/Max plan (lower limits, no per-token billing)');
+  console.log('');
+
+  const billingMode = await ask('  Billing mode (api/max)', 'api');
+
+  // ── Step 7: Project Board (Optional) ────────────────────────────
+
+  heading('Step 7 — GitHub Project Board (Optional)');
+
+  dim('Integrate with GitHub Projects v2 for tracking issue status.');
+  dim('Requires project number from your GitHub org/repo project settings.');
+  console.log('');
+
+  const setupBoard = await askYesNo('  Configure project board?', false);
+  let projectBoard: any = undefined;
+
+  if (setupBoard) {
+    console.log('');
+    dim('Find project number in GitHub: Settings → Projects → (project URL has /projects/:number)');
+    console.log('');
+
+    const projectNumber = await ask('  Project number', '');
+    if (projectNumber && !isNaN(parseInt(projectNumber, 10))) {
+      projectBoard = {
+        projectNumber: parseInt(projectNumber, 10),
+        statusField: 'Status',  // Default field names
+        batchField: 'Batch',
+        branchField: 'Branch',
+      };
+      ok('Project board configured');
+    } else {
+      info('Skipping project board (invalid number)');
+    }
+  }
+
   // ── Build Config ────────────────────────────────────────────────
 
-  const config = {
+  const config: any = {
     project: {
       repo,
       path: pathResolve(repoPath),
@@ -275,13 +416,23 @@ export async function runInit(): Promise<void> {
       },
     },
     engineers: {
+      engine: engineName || 'claude',
       maxParallel: Math.floor(maxParallelNum),
       createPr: true,
       prDraft: true,
     },
     approvalMode,
     maxTotalBudgetUsd: budgetNum,
+    billing: billingMode === 'max' ? 'max' : 'api',
   };
+
+  // Add optional configs
+  if (telegramConfig) {
+    config.telegram = telegramConfig;
+  }
+  if (projectBoard) {
+    config.engineers.projectBoard = projectBoard;
+  }
 
   // ── Write Config ────────────────────────────────────────────────
 
@@ -308,6 +459,12 @@ export async function runInit(): Promise<void> {
   console.log(`  \x1b[2m│\x1b[0m  Approval: \x1b[1m${approvalMode.padEnd(29)}\x1b[0m\x1b[2m│\x1b[0m`);
   console.log(`  \x1b[2m│\x1b[0m  Models:   \x1b[1m${model2ic}/${modelEng}/${modelTL}${''.padEnd(29 - (model2ic + modelEng + modelTL).length - 2)}\x1b[0m\x1b[2m│\x1b[0m`);
   console.log('  \x1b[2m└─────────────────────────────────────────┘\x1b[0m');
+
+  console.log('');
+  console.log('  \x1b[33m💡 Budget Tracking:\x1b[0m');
+  console.log('     Budget limits work with Anthropic API (pay-as-you-go).');
+  console.log('     If using Claude.ai Pro/Team, Echelon will auto-detect and');
+  console.log('     use turn limits instead for safety.');
 
   console.log('');
   console.log('  \x1b[1mNext steps:\x1b[0m');

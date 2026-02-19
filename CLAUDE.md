@@ -17,7 +17,7 @@ Eng Lead (AI)        ─── Technical design, architecture decisions
   ↓
 Team Lead (AI)       ─── GitHub issue creation, execution coordination
   ↓
-Engineers (AI)       ─── Parallel code execution via Ralphy
+Engineers (AI)       ─── Parallel code execution via Cheenoski
 ```
 
 ### Layer Responsibilities
@@ -41,10 +41,10 @@ Engineers (AI)       ─── Parallel code execution via Ralphy
 
 **Team Lead**
 - Creates GitHub issues with full specifications
-- Invokes Ralphy for parallel code execution
+- Invokes Cheenoski for parallel code execution
 - Monitors progress and requests PR reviews
 
-**Engineers (via Ralphy)**
+**Engineers (via Cheenoski)**
 - Execute tasks in isolated git worktrees
 - Write code based on issue specifications
 - Create pull requests when complete
@@ -76,7 +76,7 @@ All actions are defined in `src/lib/types.ts` using Zod discriminated unions. Th
 
 Available actions:
 - `create_issues` — Team Lead creates GitHub issues
-- `invoke_ralphy` — Team Lead starts parallel code execution
+- `invoke_cheenoski` — Team Lead starts parallel code execution
 - `update_plan` — 2IC/Eng Lead updates the strategic plan
 - `create_branch` — Eng Lead creates a new branch
 - `request_review` — Team Lead requests PR review
@@ -95,7 +95,7 @@ All system events flow through `bus.emitEchelon()`:
 - `action_pending` — Action awaiting CEO approval
 - `action_executed` — Action completed
 - `issue_created` — GitHub issue created
-- `ralphy_progress` — Live output from Ralphy subprocess
+- `ralphy_progress` — Live output from Cheenoski runner
 - `cost_update` — Budget tracking
 - `error` — Agent errors
 
@@ -133,12 +133,11 @@ const response = await resumeAgent(agentState.sessionId, newInput, { maxTurns })
 
 When a session is resumed (`echelon --resume`), each agent picks up where it left off with full context.
 
-### Cheenoski vs Ralphy
+### Cheenoski
 
-- **Echelon** = The orchestrator (this repo). Manages the hierarchical cascade.
-- **Ralphy** = The parallel code execution engine (bundled in `ralphy/`). Processes GitHub issues in isolated worktrees.
+**Cheenoski** is the parallel code execution engine bundled with Echelon (in `cheenoski/`). It processes GitHub issues in isolated git worktrees with domain-aware scheduling and multiple AI backend support.
 
-Echelon invokes Ralphy as a subprocess (`src/actions/ralphy.ts`). Ralphy is a bash script that spawns Claude Code agents in parallel.
+Echelon invokes Cheenoski via TypeScript (`src/actions/cheenoski.ts` and `src/cheenoski/index.ts`).
 
 ---
 
@@ -226,7 +225,7 @@ export const MyNewActionSchema = z.object({
 ```typescript
 export const ActionSchema = z.discriminatedUnion('action', [
   CreateIssuesActionSchema,
-  InvokeRalphyActionSchema,
+  InvokeCheenoskiActionSchema,
   // ...
   MyNewActionSchema,  // Add here
 ]);
@@ -265,7 +264,7 @@ Handles budget checks, state persistence, signal handling (SIGINT/SIGTERM), and 
 **Key methods:**
 - `runCascade(directive)` — Starts the cascade
 - `runLayer(role, from, input)` — Executes a single layer
-- `shutdown()` — Graceful shutdown, kills Ralphy subprocesses
+- `shutdown()` — Graceful shutdown, kills Cheenoski runneres
 
 ### `src/core/action-parser.ts`
 JSON extraction from agent responses. Uses regex to find ` ```json ... ``` ` blocks.
@@ -292,14 +291,14 @@ Action dispatch and approval queue management.
 
 **Approval modes:**
 - `none` — Auto-execute all actions
-- `destructive` — Require approval for `create_issues`, `invoke_ralphy`, `create_branch`
+- `destructive` — Require approval for `create_issues`, `invoke_cheenoski`, `create_branch`
 - `all` — Require approval for every action
 
 **Key methods:**
 - `executeOrQueue(action, from, dryRun)` — Check approval, execute or queue
 - `approve(approvalId)` — CEO approves a pending action
 - `approveAll()` — Approve all pending (for headless mode)
-- `killAllRalphy()` — Terminate Ralphy subprocesses
+- `killAllCheenoski()` — Terminate Cheenoski runners
 
 ### `src/cheenoski/git/branch-ledger.ts`
 **Note:** This file doesn't exist yet. When implementing, it will track branch creation for audit trails.
@@ -375,7 +374,7 @@ bus.onEchelon(async (event) => {
 
 ### Worktrees Are Ephemeral — Always Clean Up
 
-Ralphy uses `git worktree add` to create isolated workdirs. These MUST be cleaned up in `finally` blocks:
+Cheenoski uses `git worktree add` to create isolated workdirs. These MUST be cleaned up in `finally` blocks:
 
 ```typescript
 const worktree = await createWorktree(branch);
@@ -529,14 +528,14 @@ case 'team-lead':
 
 ```typescript
 // src/core/action-executor.ts
-const DESTRUCTIVE_ACTIONS = new Set(['create_issues', 'invoke_ralphy', 'create_branch', 'merge_pr']);
+const DESTRUCTIVE_ACTIONS = new Set(['create_issues', 'invoke_cheenoski', 'create_branch', 'merge_pr']);
 ```
 
 Done! The Team Lead can now merge PRs.
 
 ---
 
-## Domain Labels and Ralphy Integration
+## Domain Labels and Cheenoski Integration
 
 ### Domain Title Tags
 
@@ -562,7 +561,7 @@ Each issue should have a matching label:
 - `testing`
 - `documentation`
 
-### Ralphy Batch Labels
+### Cheenoski Batch Labels
 
 Issues are grouped by execution priority:
 
@@ -588,7 +587,7 @@ Issues are grouped by execution priority:
 }
 ```
 
-Ralphy uses these labels to:
+Cheenoski uses these labels to:
 1. **Parallelize by domain** — `backend` and `frontend` tasks run concurrently
 2. **Sequence by priority** — `ralphy-0` completes before `ralphy-1`
 
@@ -634,7 +633,7 @@ Logs go to `~/.echelon/logs/echelon-<timestamp>.log`.
 cat ~/.echelon/sessions/<project-timestamp>/state.json | jq .
 ```
 
-### Check Ralphy Output
+### Check Cheenoski Output
 
 Ralphy logs are captured in real-time via `bus.emitEchelon({ type: 'ralphy_progress', ... })`.
 
@@ -647,7 +646,7 @@ Watch for:
 ### Common Errors
 
 **"No downstream role for: team-lead"**
-- The cascade tried to go past Team Lead. Engineers are invoked via Ralphy, not as a layer.
+- The cascade tried to go past Team Lead. Engineers are invoked via Cheenoski, not as a layer.
 
 **"Invalid message route: 2ic → ceo"**
 - Messages must flow downward or to adjacent layers. Use `escalate` action to go upward.
@@ -656,8 +655,8 @@ Watch for:
 - Check the action JSON against the schema in `types.ts`.
 - Ensure `action` field matches a literal in the discriminated union.
 
-**"Ralphy not found"**
-- The `ralphy/` directory is missing. It should be bundled with the package.
+**"Cheenoski not found"**
+- The `cheenoski/` directory is missing. It should be bundled with the package.
 
 ---
 
@@ -680,7 +679,7 @@ echelon/
 │   │   └── session.ts              # Session management
 │   ├── actions/
 │   │   ├── github-issues.ts        # gh issue create
-│   │   ├── ralphy.ts               # Ralphy subprocess
+│   │   ├── cheenoski.ts               # Cheenoski runner
 │   │   ├── git.ts                  # Branch management
 │   │   └── review.ts               # PR review
 │   ├── ui/                         # Ink components (TUI)
@@ -694,7 +693,7 @@ echelon/
 │       ├── logger.ts               # Structured logging
 │       ├── config.ts               # Config loader
 │       └── transcript.ts           # Markdown transcript
-├── ralphy/                         # Bundled parallel execution engine
+├── cheenoski/                         # Bundled parallel execution engine
 │   ├── ralphy.sh                   # Main script
 │   └── lib/                        # Bash modules
 └── dist/                           # Compiled output (TypeScript → JS)

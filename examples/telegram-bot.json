@@ -1,0 +1,31 @@
+{
+  "project": {
+    "repo": "owner/repo",
+    "path": "/absolute/path/to/repo",
+    "baseBranch": "main"
+  },
+  "layers": {
+    "2ic": { "model": "opus", "maxBudgetUsd": 10.0 },
+    "eng-lead": { "model": "sonnet", "maxBudgetUsd": 5.0 },
+    "team-lead": { "model": "sonnet", "maxBudgetUsd": 5.0 }
+  },
+  "engineers": {
+    "engine": "claude",
+    "maxParallel": 3,
+    "createPr": true,
+    "prDraft": true
+  },
+  "telegram": {
+    "token": "123456789:ABCdefGHIjklMNOpqrsTUVwxyz",
+    "chatId": "123456789",
+    "allowedUserIds": [123456789],
+    "health": {
+      "enabled": true,
+      "port": 3000,
+      "bindAddress": "0.0.0.0"
+    }
+  },
+  "approvalMode": "destructive",
+  "billing": "api",
+  "maxTotalBudgetUsd": 50.0
+}

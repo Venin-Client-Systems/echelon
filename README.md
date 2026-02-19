@@ -4,18 +4,12 @@
     <strong>A hierarchical multi-agent AI orchestrator that turns a single directive into a full engineering org.</strong>
   </p>
   <p align="center">
-    <a href="https://github.com/Venin-Client-Systems/echelon/actions/workflows/ci.yml"><img src="https://github.com/Venin-Client-Systems/echelon/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
-    <a href="https://codecov.io/gh/Venin-Client-Systems/echelon"><img src="https://codecov.io/gh/Venin-Client-Systems/echelon/branch/main/graph/badge.svg" alt="Coverage"></a>
-    <a href="https://www.npmjs.com/package/echelon"><img src="https://img.shields.io/npm/v/echelon.svg" alt="npm version"></a>
-    <a href="https://www.npmjs.com/package/echelon"><img src="https://img.shields.io/npm/dm/echelon.svg" alt="npm downloads"></a>
-  </p>
-  <p align="center">
     <a href="#installation">Installation</a> &middot;
     <a href="#quick-start">Quick Start</a> &middot;
     <a href="#how-it-works">How It Works</a> &middot;
     <a href="#configuration">Configuration</a> &middot;
     <a href="#cli-reference">CLI Reference</a> &middot;
-    <a href="https://venin-client-systems.github.io/echelon/">API Docs</a>
+    <a href="#documentation">Docs</a>
   </p>
 </p>
 
@@ -68,6 +62,29 @@ npm run build
 # Link globally (makes `echelon` available anywhere)
 npm link
 ```
+
+### Optional: Enable Shell Completion
+
+Add tab completion for 10x faster command entry:
+
+```bash
+# Bash
+source completions/echelon-completion.bash
+echo "source $(pwd)/completions/echelon-completion.bash" >> ~/.bashrc
+
+# Zsh
+mkdir -p ~/.zsh/completions
+cp completions/echelon-completion.zsh ~/.zsh/completions/_echelon
+# Then add to ~/.zshrc and reload
+```
+
+See [docs/SHELL-COMPLETION.md](docs/SHELL-COMPLETION.md) for full instructions.
+
+### Quick Reference
+
+- **[Cheat Sheet](docs/CHEATSHEET.md)** - All commands on one page
+- **[Testing Docs](docs/TESTING.md)** - Stress test results and quality assurance
+- **[Shell Completion](docs/SHELL-COMPLETION.md)** - Tab completion setup
 
 ## Quick Start
 
@@ -134,6 +151,30 @@ For non-standard config locations or multi-project setups:
 ```bash
 echelon --config ~/configs/my-project.json
 ```
+
+## Common Commands
+
+**The only command you need to remember:**
+```bash
+echelon              # Interactive mode - handles everything for you
+```
+
+**Other useful commands:**
+```bash
+echelon --help       # Show all available commands
+echelon --version    # Show version number
+echelon status       # Check current cascade state (alias: echelon s)
+echelon --yolo       # Full autonomous mode (no approvals)
+
+# Advanced usage
+echelon -d "Your directive" --headless    # Non-interactive mode
+echelon -d "Your directive" --dry-run     # Preview without executing
+echelon init                              # Run full setup wizard
+echelon sessions list                     # View all sessions
+echelon sessions prune                    # Delete completed sessions
+```
+
+**Pro tip:** Run `echelon --help` anytime to see the full command reference with examples!
 
 ## Config Discovery
 
@@ -214,7 +255,7 @@ For detailed architecture diagrams including action lifecycle, scheduler state m
 }
 ```
 
-Engineers (Layer 4) use [Cheenoski](https://github.com/Venin-Client-Systems/echelon/tree/main/ralphy) &mdash; a parallel code execution engine that processes GitHub issues in isolated git worktrees, one branch per task, automatic PR creation.
+Engineers (Layer 4) use [Cheenoski](https://github.com/Venin-Client-Systems/echelon/tree/main/cheenoski) &mdash; a parallel code execution engine that processes GitHub issues in isolated git worktrees, one branch per task, automatic PR creation.
 
 ### Approval Modes
 
@@ -253,11 +294,19 @@ Engineers (Layer 4) use [Cheenoski](https://github.com/Venin-Client-Systems/eche
     "team-lead": { "model": "sonnet", "maxBudgetUsd": 5.0 }
   },
   "engineers": {
+    "engine": "claude",
+    "fallbackEngines": ["opencode", "cursor"],
     "maxParallel": 3,
     "createPr": true,
-    "prDraft": true
+    "prDraft": true,
+    "projectBoard": {
+      "projectNumber": 1,
+      "statusField": "Status",
+      "batchField": "Batch"
+    }
   },
   "approvalMode": "destructive",
+  "billing": "api",
   "maxTotalBudgetUsd": 50.0
 }
 ```
@@ -283,6 +332,98 @@ All fields except `project.repo` and `project.path` have defaults. When auto-dis
 
 Each layer's `maxTurns` can be overridden in the config. More turns = more file reading and reasoning, but higher cost.
 
+### Approval Modes
+
+Control when Echelon asks for your approval before executing actions:
+
+| Mode | When to Approve | Use Case |
+|------|----------------|----------|
+| `destructive` | Issue creation, code execution, branch creation | **Recommended** — Safe default, prevents unwanted changes |
+| `all` | Every action including queries | Max oversight, useful for learning how Echelon works |
+| `none` | Never (auto-approve everything) | Fully autonomous, risky but fast |
+
+**Example configs:**
+
+```json
+// Destructive mode (recommended) — Approve code changes, auto-approve queries
+{
+  "approvalMode": "destructive",
+  "project": { "repo": "owner/repo", "path": "/path" }
+}
+
+// All mode — Approve everything (useful for testing)
+{
+  "approvalMode": "all",
+  "project": { "repo": "owner/repo", "path": "/path" }
+}
+
+// None mode — Full autonomous (pair with budget limits!)
+{
+  "approvalMode": "none",
+  "maxTotalBudgetUsd": 10.0,  // Safety net!
+  "project": { "repo": "owner/repo", "path": "/path" }
+}
+```
+
+**Override at runtime:**
+```bash
+echelon -d "Add tests" --approval-mode none --headless  # Full auto
+echelon --yolo  # Alias for --approval-mode none (also skips permission prompts)
+```
+
+### Engineer Engines
+
+Echelon engineers (Cheenoski) support multiple AI backends for code execution:
+
+| Engine | Description | Best For |
+|--------|-------------|----------|
+| `claude` | Claude Code (default) | General purpose, highest quality |
+| `opencode` | OpenAI Codex via Claude Code | Alternative backend |
+| `codex` | Direct OpenAI Codex | Legacy support |
+| `cursor` | Cursor AI | Editor-integrated workflows |
+| `qwen` | Qwen Coder | Fast iteration, budget-conscious |
+
+**Fallback engines** — Automatically retry failed tasks with different engines:
+
+```json
+{
+  "engineers": {
+    "engine": "claude",
+    "fallbackEngines": ["opencode", "cursor"],  // Try these if claude fails
+    "maxParallel": 3
+  }
+}
+```
+
+When an engineer fails (timeout, crash, no code changes), Cheenoski automatically retries with the next engine in the fallback list. Useful for:
+- **Rate limits** — Switch to alternative backend when primary is throttled
+- **Task-specific performance** — Some engines excel at certain domains
+- **Cost optimization** — Try cheaper engines first, fallback to premium
+
+**Engine selection happens per-task**, so different engineers can use different backends simultaneously.
+
+### Billing Mode
+
+Choose how Anthropic API usage is calculated:
+
+```json
+{
+  "billing": "api"  // or "max"
+}
+```
+
+- **`api`** (default) — Standard API pricing, pay-per-token. Recommended for most users.
+- **`max`** — Claude Pro/Max plan. Lower concurrent request limits, but no per-token charges. Use if you have an active Max subscription.
+
+**When to use `max` mode:**
+- You have Claude Pro or Max plan
+- Working on large projects (budget limits don't apply)
+- Concerned about runaway API costs
+
+**Trade-offs:**
+- `max` mode has stricter rate limits (fewer concurrent agents)
+- `api` mode has higher throughput but accumulates charges
+
 ## CLI Reference
 
 ```
@@ -296,6 +437,7 @@ Options:
   --resume                     Resume the most recent session
   -v, --verbose                Enable debug logging
   --approval-mode <mode>       Override approval mode (destructive, all, none)
+  --yolo                       Full autonomous mode — no approvals, no permission prompts
   --telegram                   Start in Telegram bot mode
   -V, --version                Output version number
   -h, --help                   Display help
@@ -331,6 +473,17 @@ echelon --resume
 
 # Explicit config
 echelon --config path/to/echelon.config.json
+
+# Session management
+echelon sessions list                    # List all saved sessions
+echelon sessions prune                   # Delete completed/failed sessions
+echelon sessions delete <session-id>     # Delete a specific session
+
+# Telegram bot mode
+echelon --telegram                       # Start as Telegram bot
+
+# YOLO mode — full autonomous, no approvals
+echelon -d "Fix bugs" --yolo --headless
 ```
 
 ### TUI Commands
@@ -366,6 +519,101 @@ Once inside the TUI, type these at the CEO prompt:
 └────────────────────────────────────────────────┘
 ```
 
+## Telegram Bot Mode
+
+Run Echelon as a Telegram bot for mobile-first operation:
+
+```bash
+echelon --telegram
+```
+
+### Setup
+
+1. **Create a bot** via [@BotFather](https://t.me/BotFather):
+   - Send `/newbot` and follow prompts
+   - Save the bot token
+
+2. **Get your chat ID**:
+   - Message your bot
+   - Visit `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
+   - Find `"chat":{"id":123456789}` in the response
+
+3. **Configure** via `echelon init` (Step 5) or add to `echelon.config.json`:
+
+```json
+{
+  "telegram": {
+    "token": "123456:ABC...",
+    "chatId": "123456789",
+    "allowedUserIds": [123456789],
+    "health": {
+      "enabled": true,
+      "port": 3000,
+      "bindAddress": "0.0.0.0"
+    }
+  }
+}
+```
+
+### Environment Variables
+
+Override config with environment variables (useful for production):
+
+```bash
+export ECHELON_TELEGRAM_BOT_TOKEN="123456:ABC..."
+export ECHELON_TELEGRAM_CHAT_ID="123456789"
+export ECHELON_TELEGRAM_ALLOWED_USERS="123456789,987654321"  # Comma-separated
+
+# Health monitoring
+export ECHELON_HEALTH_ENABLED="true"
+export ECHELON_HEALTH_PORT="3000"
+export ECHELON_HEALTH_BIND="0.0.0.0"
+```
+
+### Health Monitoring
+
+Telegram bot mode includes an HTTP health check server (default port 3000):
+
+```bash
+curl http://localhost:3000/health
+# {"status":"ok","uptime":120,"lastActivity":"2025-01-15T10:30:00Z"}
+```
+
+Useful for monitoring bot availability in production (Docker, systemd, etc.).
+
+### Features
+
+- **Mobile approval gates** — Approve/reject actions from your phone
+- **Real-time progress** — Live updates from all layers and engineers
+- **Health monitoring** — HTTP endpoint for uptime checks
+- **User auth** — Only responds to configured user IDs
+- **Async question handling** — CEO can ask you questions mid-cascade (5-minute timeout)
+
+### Example Conversation
+
+```
+You: Add JWT authentication to the API
+
+[CEO]: Starting cascade...
+[2IC]: Breaking directive into workstreams:
+       1. JWT token generation
+       2. Refresh token flow
+       3. Middleware integration
+[Eng Lead]: Designed auth architecture
+[Team Lead]: Created issues #42, #43, #44
+
+⚠️ Approval needed: Create 3 GitHub issues?
+[Approve] [Reject]
+
+You: Approve
+
+[Team Lead]: Issues created, starting Cheenoski...
+[Eng#1]: Working on #42 (JWT generation)
+[Eng#2]: Working on #43 (refresh flow)
+[Eng#1]: PR #45 created for #42
+...
+```
+
 ## Session Persistence
 
 Sessions are saved to `~/.echelon/sessions/<project-timestamp>/`:
@@ -380,6 +628,101 @@ echelon --resume
 ```
 
 Agent context carries over &mdash; Claude sessions are resumed with `claude -r <session-id>`, so the AI remembers what it was doing.
+
+## Troubleshooting
+
+### Common Errors
+
+**"ANTHROPIC_API_KEY not set"**
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."  # Add to ~/.bashrc or ~/.zshrc
+```
+
+**"GITHUB_TOKEN not set or invalid"**
+```bash
+gh auth login  # Interactive auth
+# OR
+export GITHUB_TOKEN="ghp_..."  # Personal access token
+```
+
+**"Claude Code session not found"**
+- Agent sessions expire after inactivity
+- Start fresh: `echelon` (don't use `--resume`)
+- Check `~/.echelon/sessions/` for orphaned state
+
+**"Budget exceeded for layer: 2ic"**
+- Each layer has a budget (`layers.2ic.maxBudgetUsd`)
+- Increase in config or reduce task complexity
+- Use `haiku` for simpler tasks (cheaper)
+
+**"Action validation failed: Invalid action type"**
+- Agent returned malformed JSON action block
+- Check logs: `~/.echelon/logs/echelon-*.log`
+- Usually means agent hit context limits (reduce task scope)
+
+**Telegram bot not responding**
+- Verify env vars: `ECHELON_TELEGRAM_BOT_TOKEN`, `ECHELON_TELEGRAM_CHAT_ID`
+- Check bot token via `@BotFather`
+- Verify chat ID: `curl https://api.telegram.org/bot<TOKEN>/getUpdates`
+- Check `allowedUserIds` matches your Telegram user ID
+
+**"gh: command not found"**
+```bash
+# macOS
+brew install gh
+
+# Linux
+sudo apt install gh  # Debian/Ubuntu
+sudo dnf install gh  # Fedora
+```
+
+**Engineers (Cheenoski) stuck on "Processing issue #42"**
+- Check agent logs in worktree: `~/.echelon/worktrees/<branch>/`
+- Hard timeout: 10 minutes (configurable: `engineers.hardTimeoutMs`)
+- Kill stuck process: `pkill -f "claude.*issue-42"`
+
+### Performance Tuning
+
+**Slow cascade (>5 minutes for simple tasks)**
+- Use `haiku` for lower layers (Eng Lead, Team Lead) — faster but less capable
+- Reduce `maxTurns` for non-critical layers
+- Use `--dry-run` to preview cascade before executing
+
+**High API costs (>$5 for small features)**
+- Switch expensive layers to `sonnet` instead of `opus`
+- Set tighter per-layer budgets (`layers.2ic.maxBudgetUsd: 2.0`)
+- Use `billing: "max"` if you have Claude Pro (no per-token charges, but lower limits)
+
+**Engineers making no progress**
+- Check issue descriptions — vague specs = poor results
+- Ensure domain labels match (`[Backend]`, `[Frontend]`, etc.)
+- Try different engine: `engineers.engine: "opencode"` or `"cursor"`
+
+**Worktree conflicts**
+```bash
+# Clean up orphaned worktrees
+git worktree list
+git worktree remove <path>  # For each orphaned worktree
+```
+
+### Debug Mode
+
+Enable verbose logging:
+```bash
+echelon -d "..." --verbose
+```
+
+Logs go to `~/.echelon/logs/echelon-<timestamp>.log`. Includes:
+- Agent API calls and responses
+- Action parsing (JSON extraction)
+- Budget tracking
+- Error stack traces
+
+### Getting Help
+
+- **Issues:** https://github.com/Venin-Client-Systems/echelon/issues
+- **Docs:** [ARCHITECTURE.md](ARCHITECTURE.md), [SECURITY.md](SECURITY.md), [LOGGING.md](LOGGING.md)
+- **Examples:** Check `examples/` directory for sample configs
 
 ## Architecture
 
@@ -400,7 +743,7 @@ src/
 
   actions/
     github-issues.ts          # gh issue create/update/close
-    ralphy.ts                 # Invoke Cheenoski as subprocess
+    cheenoski.ts              # Invoke Cheenoski runner
     git.ts                    # Branch management
     review.ts                 # PR review
 
@@ -423,17 +766,20 @@ src/
     transcript.ts             # Markdown transcript writer
     prompts.ts                # System prompts for each layer
 
-ralphy/                       # Bundled parallel execution engine (Cheenoski)
+cheenoski/                    # Bundled parallel execution engine
 ```
 
 ## Documentation
 
+### Guides
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — Detailed system architecture, flow diagrams, and internals
+- **[SECURITY.md](SECURITY.md)** — Security model, credential handling, and best practices
+- **[LOGGING.md](LOGGING.md)** — Structured logging, debug mode, and log analysis
+
 ### API Reference
 
-Full TypeDoc-generated API documentation is available at:
-- **Live docs:** [https://venin-client-systems.github.io/echelon/](https://venin-client-systems.github.io/echelon/)
-
-Generate docs locally:
+Generate API documentation locally:
 ```bash
 npm run docs:api
 ```

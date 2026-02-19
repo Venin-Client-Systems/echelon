@@ -1,0 +1,7 @@
+{
+  "project": {
+    "repo": "owner/repo",
+    "path": "/absolute/path/to/repo",
+    "baseBranch": "main"
+  }
+}

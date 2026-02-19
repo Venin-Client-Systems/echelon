@@ -207,7 +207,7 @@ export function getChatId(): string {
 export async function sendTelegramMessage(text: string): Promise<void> {
   const bot = getBot();
   const chatId = getChatId();
-  const chunks = text.length > 4000 ? splitMessage(text, 4000) : [text];
+  const chunks = text.length > 4096 ? splitMessage(text, 4096) : [text];
   for (const chunk of chunks) {
     try {
       await bot.api.sendMessage(chatId, chunk, { parse_mode: 'HTML' });

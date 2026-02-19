@@ -7,6 +7,9 @@ import { dirname, join } from 'path';
 export type CliResult =
   | { command: 'run'; options: CliOptions }
   | { command: 'init' }
+  | { command: 'status' }
+  | { command: 'tutorial' }
+  | { command: 'interactive'; yolo: boolean }
   | { command: 'sessions'; action: 'list' | 'prune'; }
   | { command: 'sessions'; action: 'delete'; sessionId: string };
 
@@ -54,7 +57,26 @@ export function parseArgs(argv: string[]): CliResult {
   program
     .name('echelon')
     .description('Hierarchical multi-agent AI org orchestrator')
-    .version(packageJson.version);
+    .version(packageJson.version)
+    .addHelpText('after', `
+Quick Start:
+  $ echelon              Interactive mode (recommended)
+  $ echelon tutorial     First time? Start here! (2 min guide)
+  $ echelon --yolo       Full autonomous mode
+  $ echelon status       Check current cascade state
+  $ echelon --help       Show this help message
+
+Examples:
+  $ echelon                                    # Start interactive session
+  $ echelon tutorial                           # Learn how Echelon works
+  $ echelon --yolo                             # Run with auto-approvals
+  $ echelon -d "Add JWT auth" --headless       # Headless mode
+  $ echelon status                             # Check progress
+  $ echelon sessions list                      # View all sessions
+
+Built by VENIN (George Atkinson & Claude Opus 4.6)
+Contact: george.atkinson@venin.space
+`);
 
   // `run` subcommand — `echelon run -d "..." --headless`
   // Also set as default so `echelon -d "..." --headless` works
@@ -73,6 +95,23 @@ export function parseArgs(argv: string[]): CliResult {
     .description('Interactive config generator')
     .action(() => {
       result = { command: 'init' };
+    });
+
+  // Status subcommand (with 's' alias)
+  program
+    .command('status')
+    .alias('s')
+    .description('Show current cascade status')
+    .action(() => {
+      result = { command: 'status' };
+    });
+
+  // Tutorial subcommand
+  program
+    .command('tutorial')
+    .description('Interactive 2-minute tutorial for new users')
+    .action(() => {
+      result = { command: 'tutorial' };
     });
 
   // Sessions subcommand
@@ -113,5 +152,28 @@ export function parseArgs(argv: string[]): CliResult {
     process.exit(0); // unreachable, but satisfies TypeScript
   }
 
-  return result;
+  // TypeScript type assertion - result is definitely set at this point
+  const parsedResult: CliResult = result as CliResult;
+
+  // Detect interactive mode: just 'echelon' or 'echelon --yolo'
+  if (parsedResult.command === 'run') {
+    const runResult = parsedResult; // Store for type narrowing
+    const opts = runResult.options;
+    const isInteractive = (
+      !opts.directive &&
+      !opts.resume &&
+      !opts.config &&
+      !opts.headless &&
+      !opts.dryRun &&
+      !opts.telegram &&
+      process.stdin.isTTY
+    );
+
+    if (isInteractive) {
+      const interactiveResult: CliResult = { command: 'interactive', yolo: opts.yolo };
+      return interactiveResult;
+    }
+  }
+
+  return parsedResult;
 }

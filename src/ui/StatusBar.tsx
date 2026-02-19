@@ -30,22 +30,25 @@ function costColor(cost: number, budget: number): string {
 }
 
 export function StatusBar({ cost, budget, elapsed, repo, status, pendingCount }: StatusBarProps) {
+  const budgetPercent = budget > 0 ? Math.round((cost / budget) * 100) : 0;
+
   return (
-    <Box paddingX={1} justifyContent="space-between">
+    <Box paddingX={1} justifyContent="space-between" borderStyle="round" borderColor="gray">
       <Text>
-        <Text dimColor>Cost: </Text>
-        <Text bold color={costColor(cost, budget)}>${cost.toFixed(2)}</Text>
-        <Text dimColor>/${budget.toFixed(0)}</Text>
-        <Text dimColor> | Time: </Text>
-        <Text>{elapsed}</Text>
-        <Text dimColor> | </Text>
-        <Text color={STATUS_COLORS[status] ?? 'white'}>{status.toUpperCase()}</Text>
+        <Text dimColor>💰 </Text>
+        <Text bold color={costColor(cost, budget)}>${cost.toFixed(4)}</Text>
+        <Text dimColor>/{budget.toFixed(0)}</Text>
+        <Text dimColor> ({budgetPercent}%)</Text>
+        <Text dimColor> │ ⏱  </Text>
+        <Text color="white">{elapsed}</Text>
+        <Text dimColor> │ </Text>
+        <Text color={STATUS_COLORS[status] ?? 'white'} bold>{status.toUpperCase()}</Text>
       </Text>
       <Text>
         {pendingCount > 0 && (
-          <Text color="yellow" bold>{pendingCount} pending </Text>
+          <Text color="yellow" bold>⚠️  {pendingCount} pending │ </Text>
         )}
-        <Text dimColor>{repo}</Text>
+        <Text dimColor>📦 {repo}</Text>
       </Text>
     </Box>
   );
