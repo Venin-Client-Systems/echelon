@@ -253,11 +253,19 @@ Engineers (Layer 4) use [Cheenoski](https://github.com/Venin-Client-Systems/eche
     "team-lead": { "model": "sonnet", "maxBudgetUsd": 5.0 }
   },
   "engineers": {
+    "engine": "claude",
+    "fallbackEngines": ["opencode", "cursor"],
     "maxParallel": 3,
     "createPr": true,
-    "prDraft": true
+    "prDraft": true,
+    "projectBoard": {
+      "projectNumber": 1,
+      "statusField": "Status",
+      "batchField": "Batch"
+    }
   },
   "approvalMode": "destructive",
+  "billing": "api",
   "maxTotalBudgetUsd": 50.0
 }
 ```
@@ -282,6 +290,98 @@ All fields except `project.repo` and `project.path` have defaults. When auto-dis
 | `haiku` | Fast iteration, simple tasks | $ | 12 |
 
 Each layer's `maxTurns` can be overridden in the config. More turns = more file reading and reasoning, but higher cost.
+
+### Approval Modes
+
+Control when Echelon asks for your approval before executing actions:
+
+| Mode | When to Approve | Use Case |
+|------|----------------|----------|
+| `destructive` | Issue creation, code execution, branch creation | **Recommended** — Safe default, prevents unwanted changes |
+| `all` | Every action including queries | Max oversight, useful for learning how Echelon works |
+| `none` | Never (auto-approve everything) | Fully autonomous, risky but fast |
+
+**Example configs:**
+
+```json
+// Destructive mode (recommended) — Approve code changes, auto-approve queries
+{
+  "approvalMode": "destructive",
+  "project": { "repo": "owner/repo", "path": "/path" }
+}
+
+// All mode — Approve everything (useful for testing)
+{
+  "approvalMode": "all",
+  "project": { "repo": "owner/repo", "path": "/path" }
+}
+
+// None mode — Full autonomous (pair with budget limits!)
+{
+  "approvalMode": "none",
+  "maxTotalBudgetUsd": 10.0,  // Safety net!
+  "project": { "repo": "owner/repo", "path": "/path" }
+}
+```
+
+**Override at runtime:**
+```bash
+echelon -d "Add tests" --approval-mode none --headless  # Full auto
+echelon --yolo  # Alias for --approval-mode none (also skips permission prompts)
+```
+
+### Engineer Engines
+
+Echelon engineers (Cheenoski) support multiple AI backends for code execution:
+
+| Engine | Description | Best For |
+|--------|-------------|----------|
+| `claude` | Claude Code (default) | General purpose, highest quality |
+| `opencode` | OpenAI Codex via Claude Code | Alternative backend |
+| `codex` | Direct OpenAI Codex | Legacy support |
+| `cursor` | Cursor AI | Editor-integrated workflows |
+| `qwen` | Qwen Coder | Fast iteration, budget-conscious |
+
+**Fallback engines** — Automatically retry failed tasks with different engines:
+
+```json
+{
+  "engineers": {
+    "engine": "claude",
+    "fallbackEngines": ["opencode", "cursor"],  // Try these if claude fails
+    "maxParallel": 3
+  }
+}
+```
+
+When an engineer fails (timeout, crash, no code changes), Cheenoski automatically retries with the next engine in the fallback list. Useful for:
+- **Rate limits** — Switch to alternative backend when primary is throttled
+- **Task-specific performance** — Some engines excel at certain domains
+- **Cost optimization** — Try cheaper engines first, fallback to premium
+
+**Engine selection happens per-task**, so different engineers can use different backends simultaneously.
+
+### Billing Mode
+
+Choose how Anthropic API usage is calculated:
+
+```json
+{
+  "billing": "api"  // or "max"
+}
+```
+
+- **`api`** (default) — Standard API pricing, pay-per-token. Recommended for most users.
+- **`max`** — Claude Pro/Max plan. Lower concurrent request limits, but no per-token charges. Use if you have an active Max subscription.
+
+**When to use `max` mode:**
+- You have Claude Pro or Max plan
+- Working on large projects (budget limits don't apply)
+- Concerned about runaway API costs
+
+**Trade-offs:**
+- `max` mode has stricter rate limits (fewer concurrent agents)
+- `api` mode has higher throughput but accumulates charges
 
 ## CLI Reference
 
@@ -332,6 +432,17 @@ echelon --resume
 
 # Explicit config
 echelon --config path/to/echelon.config.json
+
+# Session management
+echelon sessions list                    # List all saved sessions
+echelon sessions prune                   # Delete completed/failed sessions
+echelon sessions delete <session-id>     # Delete a specific session
+
+# Telegram bot mode
+echelon --telegram                       # Start as Telegram bot
+
+# YOLO mode — full autonomous, no approvals
+echelon -d "Fix bugs" --yolo --headless
 ```
 
 ### TUI Commands
@@ -477,6 +588,101 @@ echelon --resume
 
 Agent context carries over &mdash; Claude sessions are resumed with `claude -r <session-id>`, so the AI remembers what it was doing.
 
+## Troubleshooting
+
+### Common Errors
+
+**"ANTHROPIC_API_KEY not set"**
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."  # Add to ~/.bashrc or ~/.zshrc
+```
+
+**"GITHUB_TOKEN not set or invalid"**
+```bash
+gh auth login  # Interactive auth
+# OR
+export GITHUB_TOKEN="ghp_..."  # Personal access token
+```
+
+**"Claude Code session not found"**
+- Agent sessions expire after inactivity
+- Start fresh: `echelon` (don't use `--resume`)
+- Check `~/.echelon/sessions/` for orphaned state
+
+**"Budget exceeded for layer: 2ic"**
+- Each layer has a budget (`layers.2ic.maxBudgetUsd`)
+- Increase in config or reduce task complexity
+- Use `haiku` for simpler tasks (cheaper)
+
+**"Action validation failed: Invalid action type"**
+- Agent returned malformed JSON action block
+- Check logs: `~/.echelon/logs/echelon-*.log`
+- Usually means agent hit context limits (reduce task scope)
+
+**Telegram bot not responding**
+- Verify env vars: `ECHELON_TELEGRAM_BOT_TOKEN`, `ECHELON_TELEGRAM_CHAT_ID`
+- Check bot token via `@BotFather`
+- Verify chat ID: `curl https://api.telegram.org/bot<TOKEN>/getUpdates`
+- Check `allowedUserIds` matches your Telegram user ID
+
+**"gh: command not found"**
+```bash
+# macOS
+brew install gh
+
+# Linux
+sudo apt install gh  # Debian/Ubuntu
+sudo dnf install gh  # Fedora
+```
+
+**Engineers (Cheenoski) stuck on "Processing issue #42"**
+- Check agent logs in worktree: `~/.echelon/worktrees/<branch>/`
+- Hard timeout: 10 minutes (configurable: `engineers.hardTimeoutMs`)
+- Kill stuck process: `pkill -f "claude.*issue-42"`
+
+### Performance Tuning
+
+**Slow cascade (>5 minutes for simple tasks)**
+- Use `haiku` for lower layers (Eng Lead, Team Lead) — faster but less capable
+- Reduce `maxTurns` for non-critical layers
+- Use `--dry-run` to preview cascade before executing
+
+**High API costs (>$5 for small features)**
+- Switch expensive layers to `sonnet` instead of `opus`
+- Set tighter per-layer budgets (`layers.2ic.maxBudgetUsd: 2.0`)
+- Use `billing: "max"` if you have Claude Pro (no per-token charges, but lower limits)
+
+**Engineers making no progress**
+- Check issue descriptions — vague specs = poor results
+- Ensure domain labels match (`[Backend]`, `[Frontend]`, etc.)
+- Try different engine: `engineers.engine: "opencode"` or `"cursor"`
+
+**Worktree conflicts**
+```bash
+# Clean up orphaned worktrees
+git worktree list
+git worktree remove <path>  # For each orphaned worktree
+```
+
+### Debug Mode
+
+Enable verbose logging:
+```bash
+echelon -d "..." --verbose
+```
+
+Logs go to `~/.echelon/logs/echelon-<timestamp>.log`. Includes:
+- Agent API calls and responses
+- Action parsing (JSON extraction)
+- Budget tracking
+- Error stack traces
+
+### Getting Help
+
+- **Issues:** https://github.com/Venin-Client-Systems/echelon/issues
+- **Docs:** [ARCHITECTURE.md](ARCHITECTURE.md), [SECURITY.md](SECURITY.md), [LOGGING.md](LOGGING.md)
+- **Examples:** Check `examples/` directory for sample configs
+
 ## Architecture
 
 ```
@@ -523,6 +729,13 @@ ralphy/                       # Bundled parallel execution engine (Cheenoski)
 ```
 
 ## Documentation
+
+### Guides
+
+- **[MIGRATION.md](MIGRATION.md)** — Upgrade guide for config changes and new features
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — Detailed system architecture, flow diagrams, and internals
+- **[SECURITY.md](SECURITY.md)** — Security model, credential handling, and best practices
+- **[LOGGING.md](LOGGING.md)** — Structured logging, debug mode, and log analysis
 
 ### API Reference
 

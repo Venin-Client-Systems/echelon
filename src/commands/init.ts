@@ -200,6 +200,39 @@ export async function runInit(): Promise<void> {
     }
   }
 
+  // ── Validate GitHub Token Permissions ───────────────────────────
+  // Check if gh is authenticated and has necessary scopes
+  if (checks[3].authenticated) {
+    try {
+      const tokenInfo = execFileSync('gh', ['auth', 'status', '-t'], {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 5000
+      });
+
+      // Check for required scopes: repo, workflow, project
+      const hasRepo = tokenInfo.includes('repo');
+      const hasWorkflow = tokenInfo.includes('workflow');
+
+      if (!hasRepo) {
+        console.log('');
+        info('GitHub token missing "repo" scope (required for issue creation).');
+        info('Re-authenticate: gh auth login --scopes repo,workflow');
+        console.log('');
+      }
+
+      if (!hasWorkflow) {
+        console.log('');
+        info('GitHub token missing "workflow" scope (recommended for CI/CD).');
+        info('This is optional but recommended for full functionality.');
+        console.log('');
+      }
+    } catch {
+      // gh auth status -t failed, token might be expired or scopes not readable
+      // Continue anyway, we already checked basic auth earlier
+    }
+  }
+
   // ── Step 2: Project ─────────────────────────────────────────────
 
   heading('Step 2 — Project');

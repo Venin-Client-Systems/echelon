@@ -259,6 +259,128 @@ graph TD
 
 **Error recovery** is built into `agent.ts` with exponential backoff, jitter, and circuit breaker pattern.
 
+## Health Monitoring
+
+**Telegram bot mode** includes an HTTP health check server for production deployments:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Telegram Bot Process                   │
+│                                                              │
+│  ┌──────────────┐         ┌─────────────────────────────┐  │
+│  │ Grammy Bot   │◄────────│ Telegram API                 │  │
+│  │              │         │ (polling/webhook)            │  │
+│  └──────┬───────┘         └─────────────────────────────┘  │
+│         │                                                    │
+│         │ Message Queue                                     │
+│         │ (serial processing)                               │
+│         ▼                                                    │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ Message Handler                                       │  │
+│  │ • Auth check (chatId, userId)                        │  │
+│  │ • Question resolution (5-min timeout)                │  │
+│  │ • Directive routing → Orchestrator                   │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ Health Server (HTTP)                :3000             │  │
+│  │                                                       │  │
+│  │  GET /health                                          │  │
+│  │  {                                                    │  │
+│  │    "status": "ok",                                    │  │
+│  │    "uptime": 120,          // seconds                │  │
+│  │    "lastActivity": "2025-01-15T10:30:00Z"            │  │
+│  │  }                                                    │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+         │
+         │ Health check probe (Docker, k8s, systemd)
+         ▼
+   curl http://localhost:3000/health
+   → Exit code 0 if "ok", 1 if down
+```
+
+### Configuration
+
+```json
+{
+  "telegram": {
+    "health": {
+      "enabled": true,
+      "port": 3000,
+      "bindAddress": "0.0.0.0"  // Listen on all interfaces
+    }
+  }
+}
+```
+
+**Environment overrides:**
+```bash
+export ECHELON_HEALTH_ENABLED="true"
+export ECHELON_HEALTH_PORT="8080"
+export ECHELON_HEALTH_BIND="127.0.0.1"  # Localhost only
+```
+
+### Implementation
+
+**Health server** (`src/telegram/health.ts`):
+- Starts when Telegram bot initializes (`createTelegramBot()`)
+- Records activity on every message received
+- Returns `200 OK` with JSON status
+- Returns `503 Service Unavailable` if bot crashes or stops polling
+
+**Activity tracking:**
+```typescript
+// src/telegram/bot.ts
+_bot.on('message:text', async (ctx) => {
+  healthServer.recordActivity();  // Update lastActivity timestamp
+  // ... handle message
+});
+```
+
+### Use Cases
+
+**Docker health check:**
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+```
+
+**Kubernetes liveness probe:**
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 3000
+  initialDelaySeconds: 10
+  periodSeconds: 30
+```
+
+**systemd monitoring:**
+```ini
+[Service]
+ExecStartPre=/usr/bin/curl -f http://localhost:3000/health
+Restart=on-failure
+RestartSec=10
+```
+
+**Uptime monitoring (UptimeRobot, Pingdom):**
+- URL: `http://your-server.com:3000/health`
+- Expected response: `{"status":"ok"}`
+- Alert if: Status code ≠ 200 or response time > 5s
+
+### Activity Timeout
+
+If `lastActivity` is older than 10 minutes, the bot may be stuck:
+- Telegram API connectivity issues
+- Rate limiting (too many messages)
+- Message queue deadlock
+
+**Troubleshooting:**
+1. Check logs: `~/.echelon/logs/echelon-*.log`
+2. Verify Telegram API: `curl https://api.telegram.org/bot<TOKEN>/getMe`
+3. Restart bot: `systemctl restart echelon-bot`
+
 ## State Persistence
 
 All orchestrator state persists to `~/.echelon/sessions/<project-timestamp>/state.json`:
