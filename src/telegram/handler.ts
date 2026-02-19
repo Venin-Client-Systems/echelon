@@ -152,7 +152,7 @@ export async function handleMessage(text: string, config: EchelonConfig): Promis
   try {
     response = await Promise.race([
       client.messages.create({
-        model: 'claude-opus-4-6',
+        model: 'opus',
         max_tokens: 4096,
         system: systemPrompt,
         tools: ceoTools,
@@ -219,7 +219,7 @@ export async function handleMessage(text: string, config: EchelonConfig): Promis
     try {
       response = await Promise.race([
         client.messages.create({
-          model: 'claude-opus-4-6',
+          model: 'opus',
           max_tokens: 4096,
           system: systemPrompt,
           tools: ceoTools,
