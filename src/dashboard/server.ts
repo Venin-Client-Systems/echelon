@@ -4,6 +4,7 @@ import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { Orchestrator } from '../core/orchestrator.js';
 import { createApiRouter } from './api.js';
+import { MetricsAggregator } from './aggregator.js';
 import { logger } from '../lib/logger.js';
 import type { EchelonEvent } from '../lib/types.js';
 import { nanoid } from 'nanoid';
@@ -17,6 +18,7 @@ import { nanoid } from 'nanoid';
  * - GET /api/sessions — List of all sessions
  * - GET /api/sessions/:id/state — Load specific session
  * - GET /api/sessions/:id/transcript — Fetch transcript markdown
+ * - GET /api/metrics — Pre-computed dashboard metrics
  * - WebSocket /ws?token=<auth-token> — Real-time event stream
  *
  * @category Dashboard
@@ -40,6 +42,7 @@ export class DashboardServer {
   private eventHandler: ((event: EchelonEvent) => void) | null = null;
   private readonly orchestrator: Orchestrator;
   private readonly authToken: string;
+  private readonly aggregator: MetricsAggregator;
 
   /**
    * Create a new dashboard server instance.
@@ -52,11 +55,14 @@ export class DashboardServer {
     this.authToken = authToken ?? nanoid(32);
     this.app = express();
 
+    // Initialize metrics aggregator with current state
+    this.aggregator = new MetricsAggregator(orchestrator.state);
+
     // JSON body parser for future POST endpoints
     this.app.use(express.json());
 
-    // Mount API router
-    const apiRouter = createApiRouter(orchestrator);
+    // Mount API router with aggregator
+    const apiRouter = createApiRouter(orchestrator, this.aggregator);
     this.app.use('/api', apiRouter);
 
     // Health check endpoint
@@ -143,7 +149,12 @@ export class DashboardServer {
         });
 
         // Subscribe to MessageBus and broadcast events to all connected clients
+        // Also update metrics aggregator on state changes
         this.eventHandler = (event: EchelonEvent) => {
+          // Update metrics aggregator
+          this.aggregator.handleEvent(event, this.orchestrator.state);
+
+          // Broadcast event to WebSocket clients
           const msg = JSON.stringify(event);
           for (const client of this.clients) {
             if (client.readyState === WebSocket.OPEN) {
