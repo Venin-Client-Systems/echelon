@@ -11,7 +11,7 @@ import { createBranch } from '../actions/git.js';
 import { requestReview } from '../actions/review.js';
 
 /** Actions that require CEO approval in "destructive" mode */
-const DESTRUCTIVE_ACTIONS = new Set(['create_issues', 'invoke_cheenoski', 'invoke_ralphy', 'create_branch']);
+const DESTRUCTIVE_ACTIONS = new Set(['create_issues', 'invoke_cheenoski', 'create_branch']);
 
 /**
  * Executes or queues actions based on approval mode.
@@ -143,8 +143,7 @@ export class ActionExecutor {
         return `Created ${created.length}/${action.issues.length} issues: ${created.map(c => `#${c.number}`).join(', ')}`;
       }
 
-      case 'invoke_cheenoski':
-      case 'invoke_ralphy': {
+      case 'invoke_cheenoski': {
         const handle = invokeCheenoski(
           action.label,
           this.config,
@@ -269,8 +268,6 @@ function describeAction(action: Action): string {
     case 'create_issues':
       return `Create ${action.issues.length} issue(s): ${action.issues.map(i => i.title).join(', ')}`;
     case 'invoke_cheenoski':
-      return `Run Cheenoski for label: ${action.label}`;
-    case 'invoke_ralphy':
       return `Run Cheenoski for label: ${action.label}`;
     case 'update_plan':
       return `Update plan (${action.workstreams?.length ?? 0} workstreams)`;

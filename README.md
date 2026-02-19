@@ -208,7 +208,7 @@ For detailed architecture diagrams including action lifecycle, scheduler state m
 }
 ```
 
-Engineers (Layer 4) use [Cheenoski](https://github.com/Venin-Client-Systems/echelon/tree/main/ralphy) &mdash; a parallel code execution engine that processes GitHub issues in isolated git worktrees, one branch per task, automatic PR creation.
+Engineers (Layer 4) use [Cheenoski](https://github.com/Venin-Client-Systems/echelon/tree/main/cheenoski) &mdash; a parallel code execution engine that processes GitHub issues in isolated git worktrees, one branch per task, automatic PR creation.
 
 ### Approval Modes
 
@@ -696,7 +696,7 @@ src/
 
   actions/
     github-issues.ts          # gh issue create/update/close
-    ralphy.ts                 # Invoke Cheenoski as subprocess
+    cheenoski.ts              # Invoke Cheenoski runner
     git.ts                    # Branch management
     review.ts                 # PR review
 
@@ -719,7 +719,7 @@ src/
     transcript.ts             # Markdown transcript writer
     prompts.ts                # System prompts for each layer
 
-ralphy/                       # Bundled parallel execution engine (Cheenoski)
+cheenoski/                    # Bundled parallel execution engine
 ```
 
 ## Documentation
