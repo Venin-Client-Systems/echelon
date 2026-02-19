@@ -257,9 +257,46 @@ export async function runInit(): Promise<void> {
 
   const approvalMode = await askValidated('  Approval mode', VALID_APPROVAL_MODES, 'destructive');
 
+  // ── Step 5: Telegram (Optional) ─────────────────────────────────
+
+  heading('Step 5 — Telegram Bot (Optional)');
+
+  dim('Run Echelon as a Telegram bot for mobile-first operation.');
+  dim('Leave blank to skip Telegram setup.');
+  console.log('');
+
+  const setupTelegram = await askYesNo('  Configure Telegram bot?', false);
+  let telegramConfig: any = undefined;
+
+  if (setupTelegram) {
+    console.log('');
+    dim('Get your bot token from @BotFather on Telegram.');
+    dim('Get your chat ID by messaging your bot and checking logs.');
+    console.log('');
+
+    const botToken = await ask('  Bot token', '');
+    const chatId = await ask('  Chat ID', '');
+    const allowedUsers = await ask('  Allowed user IDs (comma-separated)', '');
+
+    if (botToken && chatId) {
+      telegramConfig = {
+        token: botToken,
+        chatId: chatId,
+        allowedUserIds: allowedUsers ? allowedUsers.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id)) : [],
+        health: {
+          enabled: true,
+          port: 3000,
+        },
+      };
+      ok('Telegram configured');
+    } else {
+      info('Skipping Telegram (token or chat ID missing)');
+    }
+  }
+
   // ── Build Config ────────────────────────────────────────────────
 
-  const config = {
+  const config: any = {
     project: {
       repo,
       path: pathResolve(repoPath),
@@ -287,6 +324,11 @@ export async function runInit(): Promise<void> {
     approvalMode,
     maxTotalBudgetUsd: budgetNum,
   };
+
+  // Add Telegram config if configured
+  if (telegramConfig) {
+    config.telegram = telegramConfig;
+  }
 
   // ── Write Config ────────────────────────────────────────────────
 
