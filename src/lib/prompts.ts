@@ -3,6 +3,7 @@ import type { EchelonConfig } from './types.js';
 export function buildSystemPrompt(
   role: '2ic' | 'eng-lead' | 'team-lead',
   config: EchelonConfig,
+  consolidate = false,
 ): string {
   const base = [
     `You are part of an AI engineering organization working on ${config.project.repo}.`,
@@ -36,6 +37,9 @@ export function buildSystemPrompt(
       ].join('\n');
 
     case 'eng-lead':
+      const consolidateNote = consolidate
+        ? '\n\n🎯 CONSOLIDATION MODE: Create 3-5 LARGER issues instead of 10+ small ones.\nCombine related tasks into comprehensive issues. Small teams prefer fewer, meatier tasks.\n'
+        : '';
       return base + [
         '## Your Role: Engineering Lead',
         '',
@@ -44,7 +48,7 @@ export function buildSystemPrompt(
         '1. Design the technical architecture',
         '2. Break workstreams into concrete GitHub issues with full specifications',
         '3. List every issue the Team Lead should create with exact title, body, and labels',
-        '',
+        consolidateNote,
         'Available actions:',
         '- update_plan: {"action": "update_plan", "plan": "...", "workstreams": ["..."]}',
         '- create_branch: {"action": "create_branch", "branch_name": "...", "from": "main"}',

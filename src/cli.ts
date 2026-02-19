@@ -24,7 +24,8 @@ function addRunOptions(cmd: Command): Command {
     .option('--approval-mode <mode>', 'Override approval mode (destructive, all, none)')
     .option('--telegram', 'Start in Telegram bot mode', false)
     .option('--yolo', 'Full autonomous mode — no approvals, no permission prompts', false)
-    .option('-y, --yes', 'Auto-approve all actions (alias for --yolo)', false);
+    .option('-y, --yes', 'Auto-approve all actions (alias for --yolo)', false)
+    .option('--consolidate', 'Create fewer, larger issues (3-5 instead of 10+) for small teams', false);
 }
 
 function toRunResult(cmd: Command): CliResult {
@@ -43,6 +44,7 @@ function toRunResult(cmd: Command): CliResult {
       telegram: opts.telegram as boolean,
       approvalMode: opts.approvalMode as 'none' | 'destructive' | 'all' | undefined,
       yolo: yoloMode as boolean,
+      consolidate: opts.consolidate as boolean,
     },
   };
 }

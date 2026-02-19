@@ -188,6 +188,19 @@ export function useEchelon(orchestrator: Orchestrator): EchelonUI {
           addFeedEntry('System', `Issue #${event.issue.number}: ${event.issue.title}`, 'green');
           break;
 
+        case 'timeout_warning': {
+          const elapsed = Math.floor(event.elapsed / 1000);
+          const timeout = Math.floor(event.timeout / 1000);
+          const color = event.percent >= 90 ? 'red' : event.percent >= 75 ? 'yellow' : 'cyan';
+          const emoji = event.percent >= 90 ? '⚠️ ' : event.percent >= 75 ? '⏳ ' : '⏱️ ';
+          addFeedEntry(
+            LAYER_LABELS[event.role],
+            `${emoji}${event.percent}% timeout (${elapsed}s / ${timeout}s)`,
+            color,
+          );
+          break;
+        }
+
         case 'cheenoski_progress':
           addFeedEntry(`Eng:${event.label}`, event.line, 'green');
           break;

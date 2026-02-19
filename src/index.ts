@@ -191,6 +191,11 @@ async function runInteractiveMode(yolo = false): Promise<void> {
   } else {
     console.log('  Mode: \x1b[32mNew cascade\x1b[0m');
     console.log('  Directive: ' + directive.slice(0, 60) + (directive.length > 60 ? '...' : ''));
+
+    // Show cost estimate for new cascades
+    const { estimateCascadeCost, formatCostEstimate } = await import('./lib/cost-estimator.js');
+    const estimate = estimateCascadeCost(directive, config);
+    console.log('  \x1b[90mEstimated cost: $' + estimate.minCost.toFixed(2) + ' - $' + estimate.maxCost.toFixed(2) + '\x1b[0m');
   }
   console.log('  Budget: $' + config.maxTotalBudgetUsd.toFixed(2));
   if (yolo) {
@@ -224,6 +229,7 @@ async function runInteractiveMode(yolo = false): Promise<void> {
       verbose: false,
       telegram: false,
       yolo,
+      consolidate: false,
     },
     state: state ?? undefined,
   });

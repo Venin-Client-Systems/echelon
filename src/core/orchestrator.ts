@@ -60,9 +60,11 @@ export class Orchestrator {
   private cascadeStartedAt = 0;
   private readonly dryRun: boolean;
   private readonly yolo: boolean;
+  private readonly consolidate: boolean;
   private signalHandlersInstalled = false;
   private readonly boundShutdown = () => this.shutdown();
   private budgetWarningsShown = new Set<number>(); // Track which % thresholds we've warned about
+  private cascadeTimeoutWarningsShown = new Set<number>(); // Track cascade timeout warnings (50%, 75%, 90%)
   private zeroCostCallCount = 0; // Track calls returning $0 (subscription/credits detection)
   private costTrackingAvailable = true; // Flag if USD cost tracking is working
 
@@ -74,6 +76,7 @@ export class Orchestrator {
     this.config = opts.config;
     this.dryRun = opts.cliOptions.dryRun;
     this.yolo = opts.cliOptions.yolo ?? false;
+    this.consolidate = opts.cliOptions.consolidate ?? false;
     this.bus = new MessageBus();
 
     // Create or restore state
@@ -332,25 +335,67 @@ export class Orchestrator {
     updateAgentStatus(this.state, role, 'thinking');
     this.bus.emitEchelon({ type: 'agent_status', role, status: 'thinking' });
 
-    try {
-      const systemPrompt = buildSystemPrompt(role, this.config);
-      const maxTurns = layerConfig.maxTurns ?? DEFAULT_MAX_TURNS[layerConfig.model] ?? 8;
+    const systemPrompt = buildSystemPrompt(role, this.config, this.consolidate);
+    const maxTurns = layerConfig.maxTurns ?? DEFAULT_MAX_TURNS[layerConfig.model] ?? 8;
 
-      // Agent spawn/resume now has built-in error boundaries with:
-      // - Error classification (rate limit, timeout, crash, quota)
-      // - Exponential backoff with jitter
-      // - Circuit breaker (opens after 5 consecutive failures)
+    // Agent spawn/resume now has built-in error boundaries with:
+    // - Error classification (rate limit, timeout, crash, quota)
+    // - Exponential backoff with jitter
+    // - Circuit breaker (opens after 5 consecutive failures)
 
-      // Stream thinking output to TUI in real-time
-      const onProgress = (chunk: string) => {
+    // Stream thinking output to TUI in real-time
+    const onProgress = (chunk: string) => {
+      this.bus.emitEchelon({
+        type: 'agent_progress',
+        role,
+        content: chunk,
+      });
+    };
+
+    // Start timeout monitoring
+    const agentStartTime = Date.now();
+    const timeoutWarnings = new Set<number>(); // Track which % warnings we've sent
+    const timeoutMonitor = setInterval(() => {
+      const elapsed = Date.now() - agentStartTime;
+      const timeoutPercent = (elapsed / layerConfig.timeoutMs) * 100;
+
+      // Warn at 50%, 75%, 90%
+      if (timeoutPercent >= 90 && !timeoutWarnings.has(90)) {
+        timeoutWarnings.add(90);
+        layerLogger.warn(`${LAYER_LABELS[role]} approaching timeout (90% - ${(elapsed / 1000).toFixed(0)}s / ${(layerConfig.timeoutMs / 1000).toFixed(0)}s)`);
         this.bus.emitEchelon({
-          type: 'agent_progress',
+          type: 'timeout_warning',
           role,
-          content: chunk,
+          elapsed,
+          timeout: layerConfig.timeoutMs,
+          percent: 90,
         });
-      };
+      } else if (timeoutPercent >= 75 && !timeoutWarnings.has(75)) {
+        timeoutWarnings.add(75);
+        layerLogger.warn(`${LAYER_LABELS[role]} long-running (75% - ${(elapsed / 1000).toFixed(0)}s / ${(layerConfig.timeoutMs / 1000).toFixed(0)}s)`);
+        this.bus.emitEchelon({
+          type: 'timeout_warning',
+          role,
+          elapsed,
+          timeout: layerConfig.timeoutMs,
+          percent: 75,
+        });
+      } else if (timeoutPercent >= 50 && !timeoutWarnings.has(50)) {
+        timeoutWarnings.add(50);
+        layerLogger.info(`${LAYER_LABELS[role]} halfway through timeout (${(elapsed / 1000).toFixed(0)}s / ${(layerConfig.timeoutMs / 1000).toFixed(0)}s)`);
+        this.bus.emitEchelon({
+          type: 'timeout_warning',
+          role,
+          elapsed,
+          timeout: layerConfig.timeoutMs,
+          percent: 50,
+        });
+      }
+    }, 5000); // Check every 5 seconds
 
-      const response = agentState.sessionId
+    let response;
+    try {
+      response = agentState.sessionId
         ? await resumeAgent(agentState.sessionId, input, {
             maxTurns,
             timeoutMs: layerConfig.timeoutMs,
@@ -369,7 +414,12 @@ export class Orchestrator {
             yolo: this.yolo,
             onProgress,
           });
+    } finally {
+      // Always clear timeout monitor
+      clearInterval(timeoutMonitor);
+    }
 
+    try {
       // Update agent state
       agentState.sessionId = response.sessionId;
       agentState.totalCost += response.costUsd;
@@ -755,6 +805,47 @@ export class Orchestrator {
     if (this.cascadeStartedAt === 0) return false;
     const maxMs = this.config.maxCascadeDurationMs ?? 1_800_000;
     const elapsed = Date.now() - this.cascadeStartedAt;
+    const percent = (elapsed / maxMs) * 100;
+
+    // Emit warnings at 50%, 75%, 90% (once per threshold)
+    if (percent >= 90 && !this.cascadeTimeoutWarningsShown.has(90)) {
+      this.cascadeTimeoutWarningsShown.add(90);
+      const elapsedMin = (elapsed / 60_000).toFixed(1);
+      const maxMin = (maxMs / 60_000).toFixed(1);
+      this.logger.warn(`⚠️  Cascade approaching timeout (90% - ${elapsedMin}min / ${maxMin}min)`);
+      this.bus.emitEchelon({
+        type: 'timeout_warning',
+        role: 'ceo',
+        elapsed,
+        timeout: maxMs,
+        percent: 90,
+      });
+    } else if (percent >= 75 && !this.cascadeTimeoutWarningsShown.has(75)) {
+      this.cascadeTimeoutWarningsShown.add(75);
+      const elapsedMin = (elapsed / 60_000).toFixed(1);
+      const maxMin = (maxMs / 60_000).toFixed(1);
+      this.logger.warn(`Cascade long-running (75% - ${elapsedMin}min / ${maxMin}min)`);
+      this.bus.emitEchelon({
+        type: 'timeout_warning',
+        role: 'ceo',
+        elapsed,
+        timeout: maxMs,
+        percent: 75,
+      });
+    } else if (percent >= 50 && !this.cascadeTimeoutWarningsShown.has(50)) {
+      this.cascadeTimeoutWarningsShown.add(50);
+      const elapsedMin = (elapsed / 60_000).toFixed(1);
+      const maxMin = (maxMs / 60_000).toFixed(1);
+      this.logger.info(`Cascade halfway through timeout (${elapsedMin}min / ${maxMin}min)`);
+      this.bus.emitEchelon({
+        type: 'timeout_warning',
+        role: 'ceo',
+        elapsed,
+        timeout: maxMs,
+        percent: 50,
+      });
+    }
+
     if (elapsed > maxMs) {
       const elapsedMin = (elapsed / 60_000).toFixed(1);
       const maxMin = (maxMs / 60_000).toFixed(0);

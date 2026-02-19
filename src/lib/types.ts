@@ -332,6 +332,7 @@ export interface CliOptions {
   telegram: boolean;
   approvalMode?: EchelonConfig['approvalMode'];
   yolo: boolean;
+  consolidate: boolean;
 }
 
 // --- Events ---
@@ -359,5 +360,6 @@ export type EchelonEvent =
         duration: number;
       };
     }
+  | { type: 'timeout_warning'; role: AgentRole; elapsed: number; timeout: number; percent: number }
   | { type: 'shutdown'; reason: string }
   | CheenoskiEvent;
