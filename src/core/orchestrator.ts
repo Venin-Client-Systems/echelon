@@ -274,6 +274,9 @@ export class Orchestrator {
       });
       this.logger.info(`Budget: ${budgetSummary(this.state, this.config)}`);
 
+      // Show helpful next steps
+      this.printNextSteps();
+
       this.transcript.writeSummary(this.state.totalCost, new Date(this.state.startedAt));
     } finally {
       this.cascadeRunning = false;
@@ -418,6 +421,10 @@ export class Orchestrator {
       } else {
         layerLogger.error(`Layer ${LAYER_LABELS[role]} failed, cascade aborted`, { error: errMsg });
       }
+
+      // Show recovery suggestions
+      this.printRecoverySuggestions(role, errMsg);
+
       return null;
     }
   }
@@ -748,6 +755,79 @@ export class Orchestrator {
       },
       agents: agentStats,
     };
+  }
+
+  /** Print recovery suggestions when a layer fails */
+  private printRecoverySuggestions(role: AgentRole, error: string): void {
+    const errorLower = error.toLowerCase();
+
+    this.logger.info('\n' + '─'.repeat(60));
+    this.logger.info('🔧 Recovery Suggestions:\n');
+
+    // Detect common error patterns and suggest fixes
+    if (errorLower.includes('rate limit') || errorLower.includes('429')) {
+      this.logger.info('   • Rate limit hit. Wait 60s and run: echelon --resume');
+      this.logger.info('   • Or use --yolo mode for auto-retry with backoff\n');
+    } else if (errorLower.includes('quota') || errorLower.includes('insufficient_quota')) {
+      this.logger.info('   • API quota exceeded. Check limits at console.anthropic.com');
+      this.logger.info('   • Or switch to lower-cost model in config (sonnet → haiku)\n');
+    } else if (errorLower.includes('timeout') || errorLower.includes('timed out')) {
+      this.logger.info('   • Agent timeout. Increase maxTurns or timeoutMs in config');
+      this.logger.info('   • Or simplify the directive and run: echelon --resume\n');
+    } else if (errorLower.includes('budget') || errorLower.includes('cost')) {
+      this.logger.info('   • Budget exceeded. Increase maxTotalBudgetUsd in config');
+      this.logger.info('   • Or review state with: echelon status\n');
+    } else if (errorLower.includes('gh:') || errorLower.includes('github')) {
+      this.logger.info('   • GitHub CLI error. Check: gh auth status');
+      this.logger.info('   • Or re-authenticate: gh auth login\n');
+    } else if (errorLower.includes('anthropic') || errorLower.includes('api key')) {
+      this.logger.info('   • API key issue. Check: echo $ANTHROPIC_API_KEY');
+      this.logger.info('   • Or set it: export ANTHROPIC_API_KEY=sk-...\n');
+    } else {
+      this.logger.info('   • Check logs for details: ~/.echelon/logs/');
+      this.logger.info('   • Resume session: echelon --resume');
+      this.logger.info('   • Start fresh: echelon -d "your directive"\n');
+    }
+
+    this.logger.info('💡 Debug Commands:');
+    this.logger.info('   echelon status          # Check current state');
+    this.logger.info('   echelon sessions list   # View all sessions');
+    this.logger.info('   echelon --resume        # Resume from checkpoint');
+    this.logger.info('─'.repeat(60) + '\n');
+  }
+
+  /** Print helpful next steps after cascade completion */
+  private printNextSteps(): void {
+    const hasIssues = this.state.issues.length > 0;
+    const hasPending = this.executor.getPending().length > 0;
+
+    this.logger.info('\n' + '─'.repeat(60));
+    this.logger.info('✓ Cascade complete! What\'s next?\n');
+
+    if (hasPending) {
+      this.logger.info('📋 Pending Approvals:');
+      const pending = this.executor.getPending();
+      for (const p of pending.slice(0, 3)) { // Show first 3
+        this.logger.info(`   • ${p.description}`);
+      }
+      if (pending.length > 3) {
+        this.logger.info(`   ... and ${pending.length - 3} more\n`);
+      }
+      this.logger.info('   Run: echelon --resume  (then approve actions in TUI)\n');
+    }
+
+    if (hasIssues) {
+      this.logger.info('🎯 Next Steps:');
+      this.logger.info('   1. Check the GitHub issues created for your project');
+      this.logger.info('   2. Review and merge any PRs from Cheenoski');
+      this.logger.info(`   3. Run: echelon status  (check progress anytime)\n`);
+    }
+
+    this.logger.info('💡 Quick Commands:');
+    this.logger.info('   echelon status          # Check cascade state');
+    this.logger.info('   echelon sessions list   # View all sessions');
+    this.logger.info('   echelon --resume        # Continue where you left off');
+    this.logger.info('─'.repeat(60) + '\n');
   }
 
   /** Check budget and emit warnings at 75%, 90%, 95% thresholds */
