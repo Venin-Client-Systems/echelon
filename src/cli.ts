@@ -24,13 +24,13 @@ function addRunOptions(cmd: Command): Command {
     .option('--approval-mode <mode>', 'Override approval mode (destructive, all, none)')
     .option('--telegram', 'Start in Telegram bot mode', false)
     .option('--yolo', 'Full autonomous mode — no approvals, no permission prompts', false)
-    .option('-y, --yes, --auto-approve', 'Auto-approve all actions (alias for --yolo)', false);
+    .option('-y, --yes', 'Auto-approve all actions (alias for --yolo)', false);
 }
 
 function toRunResult(cmd: Command): CliResult {
   const opts = cmd.opts();
-  // Handle --yes, --auto-approve as aliases for --yolo
-  const yoloMode = opts.yolo || opts.yes || opts.autoApprove;
+  // Handle --yes as alias for --yolo
+  const yoloMode = opts.yolo || opts.yes;
   return {
     command: 'run',
     options: {
