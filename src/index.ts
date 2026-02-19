@@ -428,6 +428,12 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'tutorial': {
+      const { runTutorial } = await import('./commands/tutorial.js');
+      await runTutorial();
+      break;
+    }
+
     case 'status': {
       const detected = detectGitRepo();
       if (!detected) {

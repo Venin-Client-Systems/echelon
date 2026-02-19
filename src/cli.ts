@@ -8,6 +8,7 @@ export type CliResult =
   | { command: 'run'; options: CliOptions }
   | { command: 'init' }
   | { command: 'status' }
+  | { command: 'tutorial' }
   | { command: 'interactive'; yolo: boolean }
   | { command: 'sessions'; action: 'list' | 'prune'; }
   | { command: 'sessions'; action: 'delete'; sessionId: string };
@@ -60,12 +61,14 @@ export function parseArgs(argv: string[]): CliResult {
     .addHelpText('after', `
 Quick Start:
   $ echelon              Interactive mode (recommended)
+  $ echelon tutorial     First time? Start here! (2 min guide)
   $ echelon --yolo       Full autonomous mode
   $ echelon status       Check current cascade state
   $ echelon --help       Show this help message
 
 Examples:
   $ echelon                                    # Start interactive session
+  $ echelon tutorial                           # Learn how Echelon works
   $ echelon --yolo                             # Run with auto-approvals
   $ echelon -d "Add JWT auth" --headless       # Headless mode
   $ echelon status                             # Check progress
@@ -101,6 +104,14 @@ Contact: george.atkinson@venin.space
     .description('Show current cascade status')
     .action(() => {
       result = { command: 'status' };
+    });
+
+  // Tutorial subcommand
+  program
+    .command('tutorial')
+    .description('Interactive 2-minute tutorial for new users')
+    .action(() => {
+      result = { command: 'tutorial' };
     });
 
   // Sessions subcommand
