@@ -7,8 +7,41 @@ import {
   withErrorBoundary,
   type ClassifiedError,
 } from '../error-boundaries.js';
+import {
+  AgentValidationError,
+  ModelValidationError,
+  BudgetValidationError,
+  SessionValidationError,
+} from '../agent-errors.js';
 
 describe('AgentErrorClassifier', () => {
+  it('should classify validation errors as non-retryable', () => {
+    const modelError = new ModelValidationError('gpt-4');
+    const classified = AgentErrorClassifier.classify(modelError);
+
+    assert.equal(classified.type, 'validation');
+    assert.equal(classified.retryable, false);
+    assert.ok(classified.recoveryHint.includes('opus, sonnet, haiku'));
+    assert.equal(classified.originalError, modelError);
+  });
+
+  it('should classify all validation error subtypes', () => {
+    const budgetError = new BudgetValidationError(-1);
+    const budgetClassified = AgentErrorClassifier.classify(budgetError);
+    assert.equal(budgetClassified.type, 'validation');
+    assert.equal(budgetClassified.retryable, false);
+
+    const sessionError = new SessionValidationError('abc', 'too short');
+    const sessionClassified = AgentErrorClassifier.classify(sessionError);
+    assert.equal(sessionClassified.type, 'validation');
+    assert.equal(sessionClassified.retryable, false);
+
+    const baseError = new AgentValidationError('test', 'fix it');
+    const baseClassified = AgentErrorClassifier.classify(baseError);
+    assert.equal(baseClassified.type, 'validation');
+    assert.equal(baseClassified.retryable, false);
+  });
+
   it('should classify rate limit errors', () => {
     const error = new Error('Request failed with status 429: Too Many Requests');
     const classified = AgentErrorClassifier.classify(error);

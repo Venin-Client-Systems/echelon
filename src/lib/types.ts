@@ -17,8 +17,152 @@ export const DEFAULT_MAX_TURNS: Record<string, number> = {
   haiku: 12,
 };
 
+// --- Agent Spawn/Resume Schemas ---
+
+/**
+ * Zod schema for validating SpawnOptions.
+ *
+ * Validates all input parameters for spawning a new Claude agent:
+ * - model: must be 'opus', 'sonnet', or 'haiku'
+ * - maxBudgetUsd: minimum 0.01 USD (realistic API call cost)
+ * - systemPrompt: non-empty string, max 100,000 characters
+ * - maxTurns: optional positive integer
+ * - timeoutMs: optional, 5s to 1 hour (prevents instant timeout or runaway)
+ * - cwd: optional, must be absolute path if provided
+ * - yolo: optional boolean (skip permission prompts)
+ *
+ * @category Agent
+ *
+ * @example
+ * ```typescript
+ * import { SpawnOptionsSchema } from './types.js';
+ *
+ * const opts = {
+ *   model: 'sonnet',
+ *   maxBudgetUsd: 5.0,
+ *   systemPrompt: 'You are a helpful assistant.',
+ * };
+ *
+ * const validated = SpawnOptionsSchema.parse(opts);
+ * ```
+ */
+export const SpawnOptionsSchema = z.object({
+  model: z.enum(['opus', 'sonnet', 'haiku'], {
+    errorMap: () => ({ message: 'Model must be one of: opus, sonnet, haiku' }),
+  }),
+  maxBudgetUsd: z.number().min(0.01, {
+    message: 'Budget must be at least 0.01 USD (minimum realistic API call cost)',
+  }),
+  systemPrompt: z
+    .string()
+    .min(1, { message: 'System prompt cannot be empty' })
+    .max(100_000, { message: 'System prompt exceeds 100,000 characters' })
+    .refine((s) => s.trim().length > 0, {
+      message: 'System prompt cannot be whitespace-only',
+    }),
+  maxTurns: z.number().int().positive().optional(),
+  timeoutMs: z
+    .number()
+    .min(5_000, { message: 'Timeout must be at least 5,000ms (5 seconds)' })
+    .max(3_600_000, { message: 'Timeout must be at most 3,600,000ms (1 hour)' })
+    .optional(),
+  cwd: z
+    .string()
+    .refine((path) => path.startsWith('/'), {
+      message: 'Working directory must be an absolute path (starting with /)',
+    })
+    .optional(),
+  yolo: z.boolean().optional(),
+});
+
+/**
+ * Zod schema for validating ResumeOptions.
+ *
+ * Validates all input parameters for resuming an existing Claude agent session:
+ * - sessionId: non-empty string, min 5 characters, alphanumeric + hyphens/underscores
+ * - prompt: non-empty continuation prompt, max 100,000 characters
+ * - All optional parameters from SpawnOptions except model and systemPrompt
+ *
+ * @category Agent
+ *
+ * @example
+ * ```typescript
+ * import { ResumeOptionsSchema } from './types.js';
+ *
+ * const opts = {
+ *   sessionId: 'claude-session-abc123',
+ *   prompt: 'Continue with the next task',
+ *   maxTurns: 10,
+ * };
+ *
+ * const validated = ResumeOptionsSchema.parse(opts);
+ * ```
+ */
+export const ResumeOptionsSchema = z.object({
+  sessionId: z
+    .string()
+    .min(5, { message: 'Session ID must be at least 5 characters' })
+    .regex(/^[a-zA-Z0-9_-]+$/, {
+      message:
+        'Session ID contains invalid characters (only alphanumeric, hyphens, and underscores allowed)',
+    })
+    .refine((s) => s.trim().length > 0, {
+      message: 'Session ID cannot be empty or whitespace-only',
+    }),
+  prompt: z
+    .string()
+    .min(1, { message: 'Prompt cannot be empty' })
+    .max(100_000, { message: 'Prompt exceeds 100,000 characters' })
+    .refine((s) => s.trim().length > 0, {
+      message: 'Prompt cannot be whitespace-only',
+    }),
+  maxTurns: z.number().int().positive().optional(),
+  maxBudgetUsd: z
+    .number()
+    .min(0.01, { message: 'Budget must be at least 0.01 USD' })
+    .optional(),
+  timeoutMs: z
+    .number()
+    .min(5_000, { message: 'Timeout must be at least 5,000ms (5 seconds)' })
+    .max(3_600_000, { message: 'Timeout must be at most 3,600,000ms (1 hour)' })
+    .optional(),
+  cwd: z
+    .string()
+    .refine((path) => path.startsWith('/'), {
+      message: 'Working directory must be an absolute path (starting with /)',
+    })
+    .optional(),
+  yolo: z.boolean().optional(),
+});
+
+/**
+ * Validated spawn options inferred from SpawnOptionsSchema.
+ *
+ * Use this type when you need a fully validated SpawnOptions object.
+ * All constraints are enforced by the schema.
+ *
+ * @category Agent
+ */
+export type ValidatedSpawnOptions = z.infer<typeof SpawnOptionsSchema>;
+
+/**
+ * Validated resume options inferred from ResumeOptionsSchema.
+ *
+ * Use this type when you need a fully validated ResumeOptions object.
+ * All constraints are enforced by the schema.
+ *
+ * @category Agent
+ */
+export type ValidatedResumeOptions = z.infer<typeof ResumeOptionsSchema>;
+
 /**
  * Configuration schema for a single layer (2IC, Eng Lead, or Team Lead).
+ *
+ * All parameters are validated at runtime:
+ * - model: must be 'opus', 'sonnet', or 'haiku'
+ * - maxBudgetUsd: must be positive (minimum 0.01 USD for realistic API call cost)
+ * - maxTurns: must be positive integer if provided
+ * - timeoutMs: must be positive (default 300s = 5 minutes)
  *
  * @category Configuration
  */

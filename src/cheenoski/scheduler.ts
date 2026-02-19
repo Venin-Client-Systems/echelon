@@ -3,7 +3,7 @@ import type { EchelonConfig } from '../lib/types.js';
 import type { CheenoskiIssue, Slot, SchedulerState, EngineRunner, Domain } from './types.js';
 import { logger, shouldLogSampledEvent, type Logger } from '../lib/logger.js';
 import { detectDomain, canRunParallel, slugify } from './domain.js';
-import { createWorktree, removeWorktree } from './git/worktree.js';
+import { createWorktree, removeWorktree, cleanupForRetry } from './git/worktree.js';
 import { mergeBranch, createPullRequest, hasChanges } from './git/merge.js';
 import { runWithFallback } from './engine/fallback.js';
 import { isStuckResult } from './engine/result-parser.js';
@@ -450,7 +450,7 @@ export class Scheduler {
 
               if (attempt < maxRetries) {
                 slotLogger.warn(`Merge failed, retrying (attempt ${attempt + 1}/${totalAttempts})`);
-                await this.cleanupSlotWorktree(slot);
+                // Cleanup happens in finally block
                 continue;
               }
 
@@ -505,7 +505,9 @@ export class Scheduler {
         } finally {
           slot.finishedAt = new Date().toISOString();
           // Always cleanup worktree on attempt completion
-          await this.cleanupSlotWorktree(slot);
+          // Use comprehensive retry cleanup if not the final attempt
+          const isRetry = attempt < maxRetries && slot.status !== 'done';
+          await this.cleanupSlotWorktree(slot, isRetry);
           // Always unregister engine
           this.unregisterEngine(slot.id);
         }
@@ -534,10 +536,16 @@ export class Scheduler {
     await this.fillSlots();
   }
 
-  private async cleanupSlotWorktree(slot: Slot): Promise<void> {
-    if (slot.worktreePath) {
+  private async cleanupSlotWorktree(slot: Slot, isRetry = false): Promise<void> {
+    if (slot.worktreePath || slot.branchName) {
       try {
-        await removeWorktree(this.config.project.path, slot.worktreePath, slot.branchName, slot.issueNumber);
+        if (isRetry) {
+          // Use comprehensive cleanup for retry scenarios to prevent "already used by worktree" errors
+          await cleanupForRetry(this.config.project.path, slot.worktreePath, slot.branchName);
+        } else {
+          // Use standard cleanup for success/final failure cases
+          await removeWorktree(this.config.project.path, slot.worktreePath ?? '', slot.branchName, slot.issueNumber);
+        }
       } catch (err) {
         const slotLogger = this.logger.child({ slot: slot.id, issueNumber: slot.issueNumber });
         slotLogger.warn(`Failed to cleanup worktree: ${err instanceof Error ? err.message : err}`);
