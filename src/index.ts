@@ -105,7 +105,7 @@ async function runInteractiveMode(yolo = false): Promise<void> {
 
   console.clear();
   console.log('\n\x1b[1m\x1b[36m' + '═'.repeat(60) + '\x1b[0m');
-  console.log('\x1b[1m  Echelon AI Orchestrator\x1b[0m \x1b[90mv' + packageJson.version + '\x1b[0m');
+  console.log('\x1b[1m  VENIN Echelon AI Orchestrator\x1b[0m \x1b[90mv' + packageJson.version + '\x1b[0m');
   console.log('\x1b[36m' + '═'.repeat(60) + '\x1b[0m\n');
   console.log('  📁  Project: \x1b[1m' + detected.repo + '\x1b[0m');
   console.log('  📂  Path: \x1b[90m' + detected.path + '\x1b[0m');
@@ -325,7 +325,7 @@ async function runOrchestrator(opts: CliResult & { command: 'run' }): Promise<vo
     const __dirname = dirname(fileURLToPath(import.meta.url));
     const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
 
-    console.log('\n\x1b[1m\x1b[36mEchelon v' + packageJson.version + '\x1b[0m ' + (cliOpts.dryRun ? '(dry-run)' : '(headless)'));
+    console.log('\n\x1b[1m\x1b[36mVENIN Echelon v' + packageJson.version + '\x1b[0m ' + (cliOpts.dryRun ? '(dry-run)' : '(headless)'));
     console.log('\x1b[36m' + '─'.repeat(60) + '\x1b[0m');
     console.log('Project: ' + config.project.repo);
     console.log('Budget: $' + config.maxTotalBudgetUsd.toFixed(2) + ' | Approval: ' + config.approvalMode);
@@ -378,7 +378,7 @@ async function runOrchestrator(opts: CliResult & { command: 'run' }): Promise<vo
 
     console.clear();
     console.log('\n\x1b[1m\x1b[36m' + '═'.repeat(60) + '\x1b[0m');
-    console.log('\x1b[1m  Echelon AI Orchestrator\x1b[0m \x1b[90mv' + packageJson.version + '\x1b[0m');
+    console.log('\x1b[1m  VENIN Echelon AI Orchestrator\x1b[0m \x1b[90mv' + packageJson.version + '\x1b[0m');
     console.log('\x1b[36m' + '═'.repeat(60) + '\x1b[0m\n');
     console.log('  \x1b[32m●\x1b[0m  Hierarchical multi-agent cascade ready');
     console.log('  \x1b[32m●\x1b[0m  Budget: $' + config.maxTotalBudgetUsd.toFixed(2) + ' | Approval: ' + config.approvalMode);

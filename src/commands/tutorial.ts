@@ -192,7 +192,7 @@ export async function runTutorial(): Promise<void> {
   log('  • Help: echelon --help', 'cyan');
   console.log();
 
-  log('Built by George Atkinson & Claude Opus 4.6', 'bright');
+  log('Built by VENIN (George Atkinson & Claude Opus 4.6)', 'bright');
   log('Contact: george.atkinson@venin.space', 'cyan');
   console.log();
 

@@ -1,7 +1,7 @@
 {
   "name": "echelon",
   "version": "0.1.0",
-  "description": "Hierarchical multi-agent AI org orchestrator",
+  "description": "VENIN Echelon - Hierarchical multi-agent AI org orchestrator",
   "type": "module",
   "license": "MIT",
   "repository": {

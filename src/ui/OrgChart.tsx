@@ -20,18 +20,22 @@ const MAX_LABEL_LEN = Math.max(...LAYER_ORDER.map(r => LAYER_LABELS[r].length));
 
 export function OrgChart({ agents }: OrgChartProps) {
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1} width={22}>
-      <Text bold color="white">Org</Text>
-      {LAYER_ORDER.map(role => {
+    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} width={26}>
+      <Text bold color="magenta">⚡ HIERARCHY</Text>
+      <Text dimColor>─────────────────────</Text>
+      {LAYER_ORDER.map((role, idx) => {
         const agent = agents[role];
         const { icon, color } = STATUS_ICONS[agent.status];
         const label = LAYER_LABELS[role].padEnd(MAX_LABEL_LEN);
-        const cost = agent.cost > 0 ? ` $${agent.cost.toFixed(2)}` : '';
+        const cost = agent.cost > 0 ? `$${agent.cost.toFixed(2)}` : '--';
         return (
-          <Box key={role}>
-            <Text color={color}>{icon} </Text>
-            <Text>{label}</Text>
-            <Text dimColor>{cost}</Text>
+          <Box key={role} flexDirection="column">
+            <Box>
+              <Text color={color} bold>{icon} </Text>
+              <Text color="cyan">{label}</Text>
+              <Text dimColor> {cost}</Text>
+            </Box>
+            {idx < LAYER_ORDER.length - 1 && <Text dimColor>  ↓</Text>}
           </Box>
         );
       })}

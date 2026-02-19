@@ -74,9 +74,11 @@ export function App({ orchestrator, initialDirective }: AppProps) {
   return (
     <Box flexDirection="column" height="100%">
       {/* Header */}
-      <Box justifyContent="space-between" paddingX={1}>
-        <Text bold color="cyan">Echelon</Text>
-        <Text dimColor>{echelon.directive || 'No directive'}</Text>
+      <Box justifyContent="space-between" paddingX={1} borderStyle="round" borderColor="cyan">
+        <Text bold color="magenta">VENIN</Text>
+        <Text bold color="cyan"> Echelon</Text>
+        <Text color="gray"> | </Text>
+        <Text dimColor>{echelon.directive?.slice(0, 60) || 'No directive'}{echelon.directive && echelon.directive.length > 60 ? '...' : ''}</Text>
       </Box>
 
       {/* Main area: sidebar + feed */}

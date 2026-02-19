@@ -74,7 +74,7 @@ Examples:
   $ echelon status                             # Check progress
   $ echelon sessions list                      # View all sessions
 
-Built by George Atkinson & Claude Opus 4.6
+Built by VENIN (George Atkinson & Claude Opus 4.6)
 Contact: george.atkinson@venin.space
 `);
 

@@ -183,7 +183,7 @@ ${colors.cyan}
   ╚══════╝ ╚═════╝╚═╝  ╚═╝╚══════╝╚══════╝ ╚═════╝ ╚═╝  ╚═══╝
 ${colors.reset}
   ${colors.dim}Hierarchical Multi-Agent AI Orchestrator${colors.reset}
-  ${colors.bright}Built by George Atkinson & Claude Opus 4.6${colors.reset}
+  ${colors.bright}Built by VENIN (George Atkinson & Claude Opus 4.6)${colors.reset}
 `;
 }
 
