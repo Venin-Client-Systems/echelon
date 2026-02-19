@@ -1,10 +1,12 @@
 import { logger } from '../lib/logger.js';
+import { AgentValidationError } from './agent-errors.js';
 
 /**
  * Error classification for agent spawn/resume operations.
  * Categorizes errors to determine retry strategy and recovery hints.
  */
 export type AgentErrorType =
+  | 'validation'    // Input validation failure (non-retryable)
   | 'rate_limit'    // API rate limit (429)
   | 'quota_exceeded' // API quota exceeded (403, over_quota)
   | 'timeout'       // Operation timeout
@@ -26,6 +28,17 @@ export interface ClassifiedError {
 export class AgentErrorClassifier {
   static classify(error: Error): ClassifiedError {
     const msg = error.message.toLowerCase();
+
+    // Validation errors (non-retryable)
+    if (error instanceof AgentValidationError) {
+      return {
+        type: 'validation',
+        message: error.message,
+        retryable: false,
+        recoveryHint: error.recoveryHint,
+        originalError: error,
+      };
+    }
 
     // Rate limit detection (HTTP 429 or rate_limit_error)
     if (msg.includes('429') || msg.includes('rate limit') || msg.includes('too many requests')) {
