@@ -31,7 +31,7 @@
     "test": "vitest run && npm run test:node-only",
     "test:watch": "vitest --watch",
     "test:vitest": "vitest",
-    "test:node-only": "tsx --test src/core/__tests__/error-boundaries.test.ts src/lib/__tests__/config.test.ts",
+    "test:node-only": "tsx --test src/core/__tests__/error-boundaries.test.ts src/core/__tests__/agent-validation.test.ts src/lib/__tests__/config.test.ts",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
