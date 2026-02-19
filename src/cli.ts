@@ -11,7 +11,8 @@ export type CliResult =
   | { command: 'tutorial' }
   | { command: 'interactive'; yolo: boolean }
   | { command: 'sessions'; action: 'list' | 'prune'; }
-  | { command: 'sessions'; action: 'delete'; sessionId: string };
+  | { command: 'sessions'; action: 'delete'; sessionId: string }
+  | { command: 'analytics'; sessionId?: string };
 
 function addRunOptions(cmd: Command): Command {
   return cmd
@@ -23,11 +24,15 @@ function addRunOptions(cmd: Command): Command {
     .option('-v, --verbose', 'Enable debug logging', false)
     .option('--approval-mode <mode>', 'Override approval mode (destructive, all, none)')
     .option('--telegram', 'Start in Telegram bot mode', false)
-    .option('--yolo', 'Full autonomous mode — no approvals, no permission prompts', false);
+    .option('--yolo', 'Full autonomous mode — no approvals, no permission prompts', false)
+    .option('-y, --yes', 'Auto-approve all actions (alias for --yolo)', false)
+    .option('--consolidate', 'Create fewer, larger issues (3-5 instead of 10+) for small teams', false);
 }
 
 function toRunResult(cmd: Command): CliResult {
   const opts = cmd.opts();
+  // Handle --yes as alias for --yolo
+  const yoloMode = opts.yolo || opts.yes;
   return {
     command: 'run',
     options: {
@@ -39,7 +44,8 @@ function toRunResult(cmd: Command): CliResult {
       verbose: opts.verbose as boolean,
       telegram: opts.telegram as boolean,
       approvalMode: opts.approvalMode as 'none' | 'destructive' | 'all' | undefined,
-      yolo: opts.yolo as boolean,
+      yolo: yoloMode as boolean,
+      consolidate: opts.consolidate as boolean,
     },
   };
 }
@@ -112,6 +118,14 @@ Contact: george.atkinson@venin.space
     .description('Interactive 2-minute tutorial for new users')
     .action(() => {
       result = { command: 'tutorial' };
+    });
+
+  // Analytics subcommand
+  program
+    .command('analytics [session-id]')
+    .description('Show detailed session analytics and metrics')
+    .action((sessionId?: string) => {
+      result = { command: 'analytics', sessionId };
     });
 
   // Sessions subcommand

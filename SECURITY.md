@@ -17,7 +17,7 @@ We take the security of Echelon seriously. If you discover a security vulnerabil
 
 ### How to Report
 
-**Primary channel:** Email security reports to **security@venin-client-systems.com**
+**Primary channel:** Email security reports to **security@venin.space**
 
 For sensitive disclosures, you may encrypt your report using our PGP key (optional):
 

@@ -34,9 +34,11 @@ No agents to configure. No prompt chains to debug. One command.
 - **Parallel code execution** &mdash; Engineers run in isolated git worktrees with a sliding-window scheduler. Three engineers by default, configurable.
 - **GitHub-native** &mdash; Issues are created, branches are cut, PRs are opened and reviewed. Everything lives in your repo.
 - **Human-in-the-loop** &mdash; Approval gates let you review destructive actions (issue creation, code execution) before they happen. Or go full auto.
-- **Budget controls** &mdash; Per-layer and total spending limits. The system stops when the budget runs out, not when your wallet does.
+- **Budget controls & cost estimation** &mdash; Per-layer and total spending limits. Get min/max cost estimates before starting. The system stops when the budget runs out.
+- **Timeout warnings** &mdash; Proactive alerts at 50%, 75%, 90% of timeout thresholds. Never wonder if an agent is stuck.
 - **Terminal UI** &mdash; Real-time org chart, activity feed, issue tracker, and cost dashboard. Or run headless for CI/automation.
-- **Session persistence** &mdash; Save state, resume later. Agent context carries over via Claude session IDs.
+- **Session persistence & analytics** &mdash; Save state, resume later. Deep metrics with `echelon analytics` for cost breakdown and efficiency tracking.
+- **Issue consolidation mode** &mdash; Use `--consolidate` to create 3-5 larger issues instead of 10+ small ones. Perfect for small teams.
 - **Zero-config auto-discovery** &mdash; Just `cd` into any git repo and run `echelon`. It detects your project and gets you started.
 
 ## Prerequisites
@@ -438,6 +440,7 @@ Options:
   -v, --verbose                Enable debug logging
   --approval-mode <mode>       Override approval mode (destructive, all, none)
   --yolo                       Full autonomous mode — no approvals, no permission prompts
+  --consolidate                Create 3-5 larger issues instead of 10+ small ones (for small teams)
   --telegram                   Start in Telegram bot mode
   -V, --version                Output version number
   -h, --help                   Display help
@@ -445,6 +448,8 @@ Options:
 Commands:
   run [options]                Run the orchestrator (default)
   init                         Interactive config generator (full wizard)
+  status                       Show current cascade status
+  analytics [session-id]       Show detailed session analytics and metrics
   sessions list                List all saved sessions
   sessions prune               Delete completed/failed sessions
   sessions delete <id>         Delete a specific session
@@ -475,9 +480,15 @@ echelon --resume
 echelon --config path/to/echelon.config.json
 
 # Session management
+echelon status                           # Show current cascade status
+echelon analytics                        # Show detailed metrics for latest session
+echelon analytics <session-id>           # Analyze specific session
 echelon sessions list                    # List all saved sessions
 echelon sessions prune                   # Delete completed/failed sessions
 echelon sessions delete <session-id>     # Delete a specific session
+
+# Issue consolidation for small teams
+echelon --consolidate -d "Add auth"      # Create 3-5 larger issues instead of 10+
 
 # Telegram bot mode
 echelon --telegram                       # Start as Telegram bot

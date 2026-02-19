@@ -191,6 +191,11 @@ async function runInteractiveMode(yolo = false): Promise<void> {
   } else {
     console.log('  Mode: \x1b[32mNew cascade\x1b[0m');
     console.log('  Directive: ' + directive.slice(0, 60) + (directive.length > 60 ? '...' : ''));
+
+    // Show cost estimate for new cascades
+    const { estimateCascadeCost, formatCostEstimate } = await import('./lib/cost-estimator.js');
+    const estimate = estimateCascadeCost(directive, config);
+    console.log('  \x1b[90mEstimated cost: $' + estimate.minCost.toFixed(2) + ' - $' + estimate.maxCost.toFixed(2) + '\x1b[0m');
   }
   console.log('  Budget: $' + config.maxTotalBudgetUsd.toFixed(2));
   if (yolo) {
@@ -224,6 +229,7 @@ async function runInteractiveMode(yolo = false): Promise<void> {
       verbose: false,
       telegram: false,
       yolo,
+      consolidate: false,
     },
     state: state ?? undefined,
   });
@@ -519,6 +525,33 @@ async function main(): Promise<void> {
       }
 
       console.log(`  ─────────────────────────────────────────────────────\n`);
+      break;
+    }
+
+    case 'analytics': {
+      const detected = detectGitRepo();
+      if (!detected) {
+        console.error('\n  \x1b[31m✗\x1b[0m Analytics requires a git repository.\n');
+        process.exit(1);
+      }
+
+      // Get session ID (from arg or latest)
+      const sessionId = result.sessionId || findLatestSession(detected.repo);
+      if (!sessionId) {
+        console.log('\n  No session found.\n');
+        process.exit(0);
+      }
+
+      const state = loadState(sessionId);
+      if (!state) {
+        console.error(`  Error: Could not load session ${sessionId}`);
+        process.exit(1);
+      }
+
+      // Calculate and display metrics
+      const { calculateSessionMetrics, formatSessionMetrics } = await import('./lib/analytics.js');
+      const metrics = calculateSessionMetrics(state);
+      console.log('\n' + formatSessionMetrics(metrics) + '\n');
       break;
     }
 

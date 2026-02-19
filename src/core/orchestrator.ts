@@ -60,9 +60,11 @@ export class Orchestrator {
   private cascadeStartedAt = 0;
   private readonly dryRun: boolean;
   private readonly yolo: boolean;
+  private readonly consolidate: boolean;
   private signalHandlersInstalled = false;
   private readonly boundShutdown = () => this.shutdown();
   private budgetWarningsShown = new Set<number>(); // Track which % thresholds we've warned about
+  private cascadeTimeoutWarningsShown = new Set<number>(); // Track cascade timeout warnings (50%, 75%, 90%)
   private zeroCostCallCount = 0; // Track calls returning $0 (subscription/credits detection)
   private costTrackingAvailable = true; // Flag if USD cost tracking is working
 
@@ -74,6 +76,7 @@ export class Orchestrator {
     this.config = opts.config;
     this.dryRun = opts.cliOptions.dryRun;
     this.yolo = opts.cliOptions.yolo ?? false;
+    this.consolidate = opts.cliOptions.consolidate ?? false;
     this.bus = new MessageBus();
 
     // Create or restore state
@@ -263,7 +266,20 @@ export class Orchestrator {
 
       this.state.status = 'completed';
       saveState(this.state);
-      this.bus.emitEchelon({ type: 'cascade_complete', directive });
+
+      // Emit detailed completion summary
+      const duration = Date.now() - new Date(this.state.startedAt).getTime();
+      this.bus.emitEchelon({
+        type: 'cascade_complete',
+        directive,
+        summary: {
+          issuesCreated: this.state.issues.length,
+          actionsExecuted: this.state.messages.filter(m => m.from !== 'ceo').length,
+          pendingApprovals: this.executor.getPending().length,
+          totalCost: this.state.totalCost,
+          duration,
+        },
+      });
 
       const costLabel = this.config.billing === 'max'
         ? `$${this.state.totalCost.toFixed(2)} (estimated)`
@@ -319,25 +335,67 @@ export class Orchestrator {
     updateAgentStatus(this.state, role, 'thinking');
     this.bus.emitEchelon({ type: 'agent_status', role, status: 'thinking' });
 
-    try {
-      const systemPrompt = buildSystemPrompt(role, this.config);
-      const maxTurns = layerConfig.maxTurns ?? DEFAULT_MAX_TURNS[layerConfig.model] ?? 8;
+    const systemPrompt = buildSystemPrompt(role, this.config, this.consolidate);
+    const maxTurns = layerConfig.maxTurns ?? DEFAULT_MAX_TURNS[layerConfig.model] ?? 8;
 
-      // Agent spawn/resume now has built-in error boundaries with:
-      // - Error classification (rate limit, timeout, crash, quota)
-      // - Exponential backoff with jitter
-      // - Circuit breaker (opens after 5 consecutive failures)
+    // Agent spawn/resume now has built-in error boundaries with:
+    // - Error classification (rate limit, timeout, crash, quota)
+    // - Exponential backoff with jitter
+    // - Circuit breaker (opens after 5 consecutive failures)
 
-      // Stream thinking output to TUI in real-time
-      const onProgress = (chunk: string) => {
+    // Stream thinking output to TUI in real-time
+    const onProgress = (chunk: string) => {
+      this.bus.emitEchelon({
+        type: 'agent_progress',
+        role,
+        content: chunk,
+      });
+    };
+
+    // Start timeout monitoring
+    const agentStartTime = Date.now();
+    const timeoutWarnings = new Set<number>(); // Track which % warnings we've sent
+    const timeoutMonitor = setInterval(() => {
+      const elapsed = Date.now() - agentStartTime;
+      const timeoutPercent = (elapsed / layerConfig.timeoutMs) * 100;
+
+      // Warn at 50%, 75%, 90%
+      if (timeoutPercent >= 90 && !timeoutWarnings.has(90)) {
+        timeoutWarnings.add(90);
+        layerLogger.warn(`${LAYER_LABELS[role]} approaching timeout (90% - ${(elapsed / 1000).toFixed(0)}s / ${(layerConfig.timeoutMs / 1000).toFixed(0)}s)`);
         this.bus.emitEchelon({
-          type: 'agent_progress',
+          type: 'timeout_warning',
           role,
-          content: chunk,
+          elapsed,
+          timeout: layerConfig.timeoutMs,
+          percent: 90,
         });
-      };
+      } else if (timeoutPercent >= 75 && !timeoutWarnings.has(75)) {
+        timeoutWarnings.add(75);
+        layerLogger.warn(`${LAYER_LABELS[role]} long-running (75% - ${(elapsed / 1000).toFixed(0)}s / ${(layerConfig.timeoutMs / 1000).toFixed(0)}s)`);
+        this.bus.emitEchelon({
+          type: 'timeout_warning',
+          role,
+          elapsed,
+          timeout: layerConfig.timeoutMs,
+          percent: 75,
+        });
+      } else if (timeoutPercent >= 50 && !timeoutWarnings.has(50)) {
+        timeoutWarnings.add(50);
+        layerLogger.info(`${LAYER_LABELS[role]} halfway through timeout (${(elapsed / 1000).toFixed(0)}s / ${(layerConfig.timeoutMs / 1000).toFixed(0)}s)`);
+        this.bus.emitEchelon({
+          type: 'timeout_warning',
+          role,
+          elapsed,
+          timeout: layerConfig.timeoutMs,
+          percent: 50,
+        });
+      }
+    }, 5000); // Check every 5 seconds
 
-      const response = agentState.sessionId
+    let response;
+    try {
+      response = agentState.sessionId
         ? await resumeAgent(agentState.sessionId, input, {
             maxTurns,
             timeoutMs: layerConfig.timeoutMs,
@@ -356,7 +414,12 @@ export class Orchestrator {
             yolo: this.yolo,
             onProgress,
           });
+    } finally {
+      // Always clear timeout monitor
+      clearInterval(timeoutMonitor);
+    }
 
+    try {
       // Update agent state
       agentState.sessionId = response.sessionId;
       agentState.totalCost += response.costUsd;
@@ -721,20 +784,75 @@ export class Orchestrator {
   private printDryRun(directive: string): void {
     const isMax = this.config.billing === 'max';
     const fmtBudget = (usd: number) => isMax ? '\u221e (Max plan)' : `$${usd}`;
-    console.log('\n=== DRY RUN ===\n');
-    console.log(`Project: ${this.config.project.repo}`);
-    console.log(`Directive: ${directive}`);
-    console.log(`Approval Mode: ${this.config.approvalMode}`);
-    console.log(`Max Budget: ${fmtBudget(this.config.maxTotalBudgetUsd)}`);
-    console.log('\nCascade Plan:');
-    console.log('  1. CEO → 2IC: Strategy breakdown');
-    console.log(`     Model: ${this.config.layers['2ic'].model}, Budget: ${fmtBudget(this.config.layers['2ic'].maxBudgetUsd)}`);
-    console.log('  2. 2IC → Eng Lead: Technical design');
-    console.log(`     Model: ${this.config.layers['eng-lead'].model}, Budget: ${fmtBudget(this.config.layers['eng-lead'].maxBudgetUsd)}`);
-    console.log('  3. Eng Lead → Team Lead: Issue creation + execution');
-    console.log(`     Model: ${this.config.layers['team-lead'].model}, Budget: ${fmtBudget(this.config.layers['team-lead'].maxBudgetUsd)}`);
-    console.log(`  4. Team Lead → Engineers: Cheenoski (max ${this.config.engineers.maxParallel} parallel)`);
-    console.log('\n=== END DRY RUN ===\n');
+
+    // Get cost estimate
+    const { estimateCascadeCost } = require('../lib/cost-estimator.js');
+    const estimate = estimateCascadeCost(directive, this.config);
+
+    console.log('\n\x1b[1m\x1b[36m═════════════════════════════════════════════════════════════\x1b[0m');
+    console.log('\x1b[1m  DRY RUN - CASCADE PREVIEW\x1b[0m');
+    console.log('\x1b[36m═════════════════════════════════════════════════════════════\x1b[0m\n');
+
+    console.log('\x1b[1mPROJECT:\x1b[0m');
+    console.log(`  Repository: ${this.config.project.repo}`);
+    console.log(`  Base Branch: ${this.config.project.baseBranch}`);
+    console.log('');
+
+    console.log('\x1b[1mDIRECTIVE:\x1b[0m');
+    console.log(`  ${directive}`);
+    console.log('');
+
+    console.log('\x1b[1mCOST ESTIMATE:\x1b[0m');
+    if (isMax) {
+      console.log(`  Estimated: $${estimate.minCost.toFixed(2)} - $${estimate.maxCost.toFixed(2)} \x1b[90m(Max plan - unlimited)\x1b[0m`);
+    } else {
+      console.log(`  Estimated: $${estimate.minCost.toFixed(2)} - $${estimate.maxCost.toFixed(2)}`);
+      console.log(`  Max Budget: $${this.config.maxTotalBudgetUsd.toFixed(2)}`);
+      const sufficient = estimate.maxCost <= this.config.maxTotalBudgetUsd;
+      console.log(`  Status: ${sufficient ? '\x1b[32m✓ Sufficient\x1b[0m' : '\x1b[33m⚠️  May exceed budget\x1b[0m'}`);
+    }
+    console.log('');
+
+    console.log('\x1b[1mCONFIGURATION:\x1b[0m');
+    console.log(`  Approval Mode: ${this.config.approvalMode}`);
+    console.log(`  Max Duration: ${(this.config.maxCascadeDurationMs / 60_000).toFixed(0)} minutes`);
+    console.log(`  Consolidate Issues: ${this.consolidate ? 'Yes (3-5 larger issues)' : 'No (standard)'}`);
+    console.log('');
+
+    console.log('\x1b[1mEXECUTION PLAN:\x1b[0m');
+    console.log('  \x1b[36m1. CEO → 2IC\x1b[0m Strategy breakdown');
+    console.log(`     Model: ${this.config.layers['2ic'].model} | Budget: ${fmtBudget(this.config.layers['2ic'].maxBudgetUsd)} | Est: $${estimate.perLayer[0].minCost.toFixed(3)}-$${estimate.perLayer[0].maxCost.toFixed(3)}`);
+    console.log(`     Timeout: ${(this.config.layers['2ic'].timeoutMs / 1000).toFixed(0)}s`);
+    console.log('');
+
+    console.log('  \x1b[36m2. 2IC → Eng Lead\x1b[0m Technical design');
+    console.log(`     Model: ${this.config.layers['eng-lead'].model} | Budget: ${fmtBudget(this.config.layers['eng-lead'].maxBudgetUsd)} | Est: $${estimate.perLayer[1].minCost.toFixed(3)}-$${estimate.perLayer[1].maxCost.toFixed(3)}`);
+    console.log(`     Timeout: ${(this.config.layers['eng-lead'].timeoutMs / 1000).toFixed(0)}s`);
+    console.log('');
+
+    console.log('  \x1b[36m3. Eng Lead → Team Lead\x1b[0m Issue creation + execution');
+    console.log(`     Model: ${this.config.layers['team-lead'].model} | Budget: ${fmtBudget(this.config.layers['team-lead'].maxBudgetUsd)} | Est: $${estimate.perLayer[2].minCost.toFixed(3)}-$${estimate.perLayer[2].maxCost.toFixed(3)}`);
+    console.log(`     Timeout: ${(this.config.layers['team-lead'].timeoutMs / 1000).toFixed(0)}s`);
+    console.log('');
+
+    console.log('  \x1b[36m4. Team Lead → Engineers\x1b[0m Cheenoski execution');
+    console.log(`     Max Parallel: ${this.config.engineers.maxParallel}`);
+    console.log(`     Engine: ${this.config.engineers.engine || 'claude'}`);
+    console.log(`     Create PRs: ${this.config.engineers.createPr ? 'Yes' : 'No'}${this.config.engineers.prDraft ? ' (draft)' : ''}`);
+    console.log('');
+
+    console.log('\x1b[1mEXPECTED ACTIONS:\x1b[0m');
+    console.log('  • 2IC will break directive into strategic workstreams');
+    console.log('  • Eng Lead will design technical architecture and create issue specs');
+    console.log('  • Team Lead will create GitHub issues and invoke Cheenoski');
+    console.log('  • Engineers will implement tasks in parallel via Cheenoski');
+    if (this.config.engineers.createPr) {
+      console.log('  • Pull requests will be created for each completed task');
+    }
+    console.log('');
+
+    console.log('\x1b[36m═════════════════════════════════════════════════════════════\x1b[0m');
+    console.log('\x1b[90mRun without --dry-run to execute this cascade.\x1b[0m\n');
   }
 
   /** Check if the cascade has exceeded its max duration */
@@ -742,6 +860,47 @@ export class Orchestrator {
     if (this.cascadeStartedAt === 0) return false;
     const maxMs = this.config.maxCascadeDurationMs ?? 1_800_000;
     const elapsed = Date.now() - this.cascadeStartedAt;
+    const percent = (elapsed / maxMs) * 100;
+
+    // Emit warnings at 50%, 75%, 90% (once per threshold)
+    if (percent >= 90 && !this.cascadeTimeoutWarningsShown.has(90)) {
+      this.cascadeTimeoutWarningsShown.add(90);
+      const elapsedMin = (elapsed / 60_000).toFixed(1);
+      const maxMin = (maxMs / 60_000).toFixed(1);
+      this.logger.warn(`⚠️  Cascade approaching timeout (90% - ${elapsedMin}min / ${maxMin}min)`);
+      this.bus.emitEchelon({
+        type: 'timeout_warning',
+        role: 'ceo',
+        elapsed,
+        timeout: maxMs,
+        percent: 90,
+      });
+    } else if (percent >= 75 && !this.cascadeTimeoutWarningsShown.has(75)) {
+      this.cascadeTimeoutWarningsShown.add(75);
+      const elapsedMin = (elapsed / 60_000).toFixed(1);
+      const maxMin = (maxMs / 60_000).toFixed(1);
+      this.logger.warn(`Cascade long-running (75% - ${elapsedMin}min / ${maxMin}min)`);
+      this.bus.emitEchelon({
+        type: 'timeout_warning',
+        role: 'ceo',
+        elapsed,
+        timeout: maxMs,
+        percent: 75,
+      });
+    } else if (percent >= 50 && !this.cascadeTimeoutWarningsShown.has(50)) {
+      this.cascadeTimeoutWarningsShown.add(50);
+      const elapsedMin = (elapsed / 60_000).toFixed(1);
+      const maxMin = (maxMs / 60_000).toFixed(1);
+      this.logger.info(`Cascade halfway through timeout (${elapsedMin}min / ${maxMin}min)`);
+      this.bus.emitEchelon({
+        type: 'timeout_warning',
+        role: 'ceo',
+        elapsed,
+        timeout: maxMs,
+        percent: 50,
+      });
+    }
+
     if (elapsed > maxMs) {
       const elapsedMin = (elapsed / 60_000).toFixed(1);
       const maxMin = (maxMs / 60_000).toFixed(0);

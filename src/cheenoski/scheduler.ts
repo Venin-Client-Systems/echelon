@@ -154,6 +154,70 @@ export class Scheduler {
     this.activeEngines.clear();
   }
 
+  /** Kill a specific slot by issue number */
+  killSlot(issueNumber: number): boolean {
+    const slot = this.slots.find(s => s.issueNumber === issueNumber && (s.status === 'running' || s.status === 'merging'));
+    if (!slot) {
+      this.logger.warn(`No active slot found for issue #${issueNumber}`);
+      return false;
+    }
+
+    const engine = this.activeEngines.get(slot.id);
+    if (engine) {
+      try {
+        engine.kill();
+        this.logger.info(`Killed engine for issue #${issueNumber} (slot ${slot.id})`);
+        this.unregisterEngine(slot.id);
+        slot.status = 'failed';
+        slot.error = 'Killed by user';
+
+        this.bus.emitEchelon({
+          type: 'cheenoski_slot_killed',
+          issueNumber,
+          slotId: slot.id,
+        });
+
+        return true;
+      } catch (err) {
+        this.logger.warn(`Failed to kill engine for issue #${issueNumber}: ${err instanceof Error ? err.message : err}`);
+        return false;
+      }
+    }
+
+    return false;
+  }
+
+  /** Pause the scheduler without killing running tasks */
+  pause(): void {
+    this.running = false;
+    this.logger.info('Scheduler paused - running tasks will complete');
+
+    this.bus.emitEchelon({
+      type: 'cheenoski_paused',
+      label: this.label,
+    });
+  }
+
+  /** Resume the scheduler */
+  resume(): void {
+    if (!this.running) {
+      this.running = true;
+      this.logger.info('Scheduler resumed');
+
+      this.bus.emitEchelon({
+        type: 'cheenoski_resumed',
+        label: this.label,
+      });
+
+      // Trigger fillSlots to restart processing
+      this.fillSlots().catch(err => {
+        this.logger.error('Failed to fill slots on resume', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
+  }
+
   /** Register an active engine for a slot (so kill() can reach it) */
   registerEngine(slotId: number, engine: EngineRunner): void {
     this.activeEngines.set(slotId, engine);

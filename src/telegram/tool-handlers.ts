@@ -36,6 +36,7 @@ function getOrchestrator(config: EchelonConfig): Orchestrator {
       verbose: false,
       telegram: true,
       yolo: false,
+      consolidate: false,
     },
     state: state ?? undefined,
   });

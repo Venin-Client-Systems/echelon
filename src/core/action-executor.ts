@@ -264,20 +264,41 @@ export class ActionExecutor {
 }
 
 function describeAction(action: Action): string {
+  const MAX_LENGTH = 120; // Truncate descriptions at 120 chars
+
+  let desc: string;
   switch (action.action) {
-    case 'create_issues':
-      return `Create ${action.issues.length} issue(s): ${action.issues.map(i => i.title).join(', ')}`;
+    case 'create_issues': {
+      const titles = action.issues.map(i => i.title).join(', ');
+      desc = `Create ${action.issues.length} issue(s): ${titles}`;
+      break;
+    }
     case 'invoke_cheenoski':
-      return `Run Cheenoski for label: ${action.label}`;
+      desc = `Run Cheenoski for label: ${action.label}`;
+      break;
     case 'update_plan':
-      return `Update plan (${action.workstreams?.length ?? 0} workstreams)`;
+      desc = `Update plan (${action.workstreams?.length ?? 0} workstreams)`;
+      break;
     case 'request_info':
-      return `Request info from ${action.target}`;
+      desc = `Request info from ${action.target}`;
+      break;
     case 'escalate':
-      return `Escalate: ${action.reason}`;
+      desc = `Escalate: ${action.reason}`;
+      break;
     case 'request_review':
-      return `Review PR #${action.pr_number}`;
+      desc = `Review PR #${action.pr_number}`;
+      break;
     case 'create_branch':
-      return `Create branch: ${action.branch_name}`;
+      desc = `Create branch: ${action.branch_name}`;
+      break;
+    default:
+      desc = `Unknown action: ${(action as { action: string }).action}`;
+      break;
   }
+
+  // Truncate long descriptions for better readability
+  if (desc.length > MAX_LENGTH) {
+    return desc.slice(0, MAX_LENGTH - 3) + '...';
+  }
+  return desc;
 }

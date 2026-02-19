@@ -202,6 +202,22 @@ export interface CheenoskiCompleteEvent {
     };
 }
 
+export interface CheenoskiSlotKilledEvent {
+    type: 'cheenoski_slot_killed';
+    issueNumber: number;
+    slotId: number;
+}
+
+export interface CheenoskiPausedEvent {
+    type: 'cheenoski_paused';
+    label: string;
+}
+
+export interface CheenoskiResumedEvent {
+    type: 'cheenoski_resumed';
+    label: string;
+}
+
 export type CheenoskiEvent =
     | CheenoskiSlotFillEvent
     | CheenoskiSlotDoneEvent
@@ -209,4 +225,7 @@ export type CheenoskiEvent =
     | CheenoskiMergeEvent
     | CheenoskiPrCreatedEvent
     | CheenoskiEngineSwitch
-    | CheenoskiCompleteEvent;
+    | CheenoskiCompleteEvent
+    | CheenoskiSlotKilledEvent
+    | CheenoskiPausedEvent
+    | CheenoskiResumedEvent;
