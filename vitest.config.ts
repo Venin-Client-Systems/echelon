@@ -6,6 +6,7 @@ export default defineConfig({
     include: [
       'src/core/__tests__/action-parser*.test.ts',
       'src/core/__tests__/orchestrator.test.ts',
+      'src/cheenoski/__tests__/worktree-retry.test.ts',
     ],
     // Exclude Node.js test runner files
     exclude: [
