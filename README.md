@@ -682,6 +682,13 @@ src/
 ralphy/                       # Bundled parallel execution engine (Cheenoski)
 ```
 
+### Architecture Deep Dives
+
+For detailed technical documentation on specific subsystems:
+
+- **[Worktree Cleanup Architecture](docs/architecture/worktree-cleanup.md)** — Comprehensive guide to cleanup logic, failure patterns, and recovery procedures
+- **[Worktree Lifecycle](docs/development/worktree-lifecycle.md)** — Complete lifecycle from creation to cleanup with testing patterns
+
 ## Documentation
 
 ### API Reference
