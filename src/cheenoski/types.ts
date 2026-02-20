@@ -93,6 +93,8 @@ export interface SchedulerState {
     completedCount: number;
     failedCount: number;
     totalIssues: number;
+    batchPrNumber?: number;
+    batchPrUrl?: string;
 }
 
 export interface CheenoskiIssue {
@@ -181,6 +183,14 @@ export interface CheenoskiPrCreatedEvent {
     prUrl: string;
 }
 
+export interface CheenoskiBatchPrCreatedEvent {
+    type: 'cheenoski_batch_pr_created';
+    label: string;
+    prNumber: number;
+    prUrl: string;
+    issueCount: number;
+}
+
 export interface CheenoskiEngineSwitch {
     type: 'cheenoski_engine_switch';
     slot: Slot;
@@ -224,6 +234,7 @@ export type CheenoskiEvent =
     | CheenoskiDashboardEvent
     | CheenoskiMergeEvent
     | CheenoskiPrCreatedEvent
+    | CheenoskiBatchPrCreatedEvent
     | CheenoskiEngineSwitch
     | CheenoskiCompleteEvent
     | CheenoskiSlotKilledEvent

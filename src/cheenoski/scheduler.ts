@@ -1,3 +1,5 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import type { MessageBus } from '../core/message-bus.js';
 import type { EchelonConfig } from '../lib/types.js';
 import type { CheenoskiIssue, Slot, SchedulerState, EngineRunner } from './types.js';
@@ -14,6 +16,13 @@ import { closeIssue, commentOnIssue, blockIssue, detectLoop, isIssueInProgress }
 import { updateIssueStatus, updateIssueBranch } from './github/project-board.js';
 import { reapOrphanedProcesses } from './cleanup.js';
 import { sendDesktopNotification, playSound } from './notifications.js';
+
+const execFileAsync = promisify(execFile);
+
+async function git(args: string[], cwd: string): Promise<string> {
+  const { stdout } = await execFileAsync('git', args, { cwd, encoding: 'utf-8' });
+  return stdout.trim();
+}
 
 /**
  * Simple async mutex for serializing merge operations.
@@ -62,6 +71,8 @@ export class Scheduler {
   private mergeMutex = new AsyncMutex();
   /** Track running slot promises so we can await them on shutdown */
   private runningSlots = new Map<number, Promise<void>>();
+  /** Batch feature branch for aggregating all issue changes */
+  private batchBranch = '';
 
   constructor(config: EchelonConfig, bus: MessageBus, label: string) {
     this.config = config;
@@ -92,6 +103,16 @@ export class Scheduler {
     this.issueQueue = [...issues];
     const maxParallel = this.config.engineers.maxParallel;
 
+    // Create batch feature branch for aggregating all changes
+    this.batchBranch = `echelon/${this.label}-${Date.now()}`;
+    try {
+      await git(['checkout', '-b', this.batchBranch, this.config.project.baseBranch], this.config.project.path);
+      this.logger.info(`Created batch branch: ${this.batchBranch}`);
+    } catch (err) {
+      this.logger.error(`Failed to create batch branch ${this.batchBranch}: ${err instanceof Error ? err.message : err}`);
+      throw err;
+    }
+
     this.logger.info(`Scheduler starting: ${issues.length} issues, ${maxParallel} parallel slots`);
 
     try {
@@ -115,6 +136,49 @@ export class Scheduler {
       this.emitDashboard();
 
       const stats = this.state;
+      const successfulSlots = this.slots.filter(s => s.status === 'done');
+      const failedSlots = this.slots.filter(s => s.status === 'failed' || s.status === 'blocked');
+
+      // Create batch PR if configured and there are successful issues
+      if (this.config.engineers.createPr && successfulSlots.length > 0) {
+        try {
+          // Push batch branch to remote
+          await git(['push', '-u', 'origin', this.batchBranch], this.config.project.path);
+          this.logger.info(`Pushed batch branch ${this.batchBranch} to remote`);
+
+          // Create consolidated PR
+          const title = `[Cheenoski] ${this.label} (${successfulSlots.length} issue${successfulSlots.length === 1 ? '' : 's'})`;
+          const body = this.buildBatchPrBody(successfulSlots, failedSlots);
+
+          const pr = await createPullRequest(
+            this.config.project.repo,
+            this.batchBranch,
+            this.config.project.baseBranch,
+            title,
+            body,
+            this.config.engineers.prDraft,
+            this.config.project.path,
+          );
+
+          stats.batchPrNumber = pr.number;
+          stats.batchPrUrl = pr.url;
+
+          this.logger.info(`Batch PR created: ${pr.url}`);
+
+          this.bus.emitEchelon({
+            type: 'cheenoski_batch_pr_created',
+            label: this.label,
+            prNumber: pr.number,
+            prUrl: pr.url,
+            issueCount: successfulSlots.length,
+          });
+        } catch (err) {
+          this.logger.warn(`Batch PR creation failed: ${err instanceof Error ? err.message : err}`);
+        }
+      } else if (successfulSlots.length === 0) {
+        this.logger.warn(`No successful issues in batch ${this.label} - skipping PR creation`);
+      }
+
       this.bus.emitEchelon({
         type: 'cheenoski_complete',
         label: this.label,
@@ -124,7 +188,7 @@ export class Scheduler {
           failed: stats.failedCount,
           blocked: this.slots.filter(s => s.status === 'blocked').length,
           durationMs: Date.now() - this.startTime,
-          prsCreated: this.slots.filter(s => s.prNumber !== null).length,
+          prsCreated: stats.batchPrNumber ? 1 : 0,
         },
       });
 
@@ -137,6 +201,16 @@ export class Scheduler {
       return stats;
     } finally {
       this.running = false;
+
+      // Switch back to base branch
+      if (this.batchBranch) {
+        try {
+          await git(['checkout', this.config.project.baseBranch], this.config.project.path);
+          this.logger.info(`Switched back to ${this.config.project.baseBranch}`);
+        } catch (err) {
+          this.logger.warn(`Failed to checkout base branch: ${err instanceof Error ? err.message : err}`);
+        }
+      }
     }
   }
 
@@ -448,7 +522,7 @@ export class Scheduler {
               mergeResult = await mergeBranch(
                 this.config.project.path,
                 slot.branchName,
-                this.config.project.baseBranch,
+                this.batchBranch,  // Merge to batch branch instead of baseBranch
                 slot.issueNumber,
               );
             } finally {
@@ -456,35 +530,14 @@ export class Scheduler {
             }
 
             if (mergeResult.success) {
-              // Create PR if configured
-              if (this.config.engineers.createPr) {
-                try {
-                  const pr = await createPullRequest(
-                    this.config.project.repo,
-                    slot.branchName,
-                    this.config.project.baseBranch,
-                    slot.issueTitle,
-                    `Closes #${slot.issueNumber}\n\nAutomatic PR by Cheenoski.`,
-                    this.config.engineers.prDraft,
-                    this.config.project.path,
-                  );
-                  slot.prNumber = pr.number;
-                  this.bus.emitEchelon({
-                    type: 'cheenoski_pr_created',
-                    slot: { ...slot },
-                    prNumber: pr.number,
-                    prUrl: pr.url,
-                  });
-                } catch (err) {
-                  slotLogger.warn(`PR creation failed: ${err instanceof Error ? err.message : err}`);
-                }
-              }
+              // Per-issue PR creation removed - now handled at batch level
+              // See buildBatchPrBody() and run() method for batch PR creation
 
               // Close the issue
               await closeIssue(
                 this.config.project.repo,
                 slot.issueNumber,
-                `Completed by Cheenoski (${slot.engineName}). ${slot.prNumber ? `PR #${slot.prNumber}` : 'Merged directly.'}`,
+                `Completed by Cheenoski (${slot.engineName}). Changes merged to batch branch ${this.batchBranch}.`,
               );
 
               // Merge lessons back
@@ -643,6 +696,39 @@ export class Scheduler {
     }
 
     await this.fillSlots();
+  }
+
+  /** Build PR body for batch PR with all completed and failed issues */
+  private buildBatchPrBody(slots: Slot[], failedSlots: Slot[]): string {
+    const lines = [
+      '## Issues Completed',
+      '',
+      ...slots.map(s => `- Closes #${s.issueNumber}: ${s.issueTitle}`),
+      '',
+    ];
+
+    if (failedSlots.length > 0) {
+      lines.push('## Issues Failed');
+      lines.push('');
+      lines.push(...failedSlots.map(s => {
+        const reason = s.status === 'blocked' ? 'blocked' : 'failed';
+        return `- #${s.issueNumber}: ${s.issueTitle} (${reason}${s.error ? `: ${s.error.slice(0, 100)}` : ''})`;
+      }));
+      lines.push('');
+    }
+
+    lines.push('## Summary');
+    lines.push('');
+    lines.push(`Completed ${slots.length} issues in batch \`${this.label}\`:`);
+    lines.push(...slots.map(s => {
+      const domain = s.domain || 'unknown';
+      return `- **#${s.issueNumber}** [${domain}]: ${s.issueTitle}`;
+    }));
+    lines.push('');
+    lines.push('---');
+    lines.push('🤖 Generated by Echelon Cheenoski');
+
+    return lines.join('\n');
   }
 
   private hasPendingWork(): boolean {
