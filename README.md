@@ -1,30 +1,68 @@
 <p align="center">
   <h1 align="center">Echelon</h1>
   <p align="center">
-    <strong>A hierarchical multi-agent AI orchestrator that turns a single directive into a full engineering org.</strong>
+    <strong>Silent infrastructure for AI orchestration.</strong><br/>
+    <em>Hierarchical multi-agent system that turns directives into engineering outcomes.</em>
   </p>
   <p align="center">
-    <a href="#installation">Installation</a> &middot;
-    <a href="#quick-start">Quick Start</a> &middot;
+    <a href="#for-ai-agents">For AI Agents</a> &middot;
+    <a href="#for-humans">For Humans</a> &middot;
     <a href="#how-it-works">How It Works</a> &middot;
-    <a href="#configuration">Configuration</a> &middot;
-    <a href="#cli-reference">CLI Reference</a> &middot;
+    <a href="#installation">Installation</a> &middot;
     <a href="#documentation">Docs</a>
   </p>
 </p>
 
 ---
 
-You give a directive. Echelon builds the team, plans the work, creates GitHub issues, writes the code, opens PRs, and asks you to approve along the way.
+**Silent infrastructure that "just works"** — Echelon is designed for AI-to-AI orchestration. Your AI assistant (Claude Code, Cursor, etc.) delegates complex work to Echelon's management hierarchy, monitors progress, and reports back. You never need to run `echelon` directly.
+
+Give a directive through your AI assistant. Echelon builds the team, plans the work, creates GitHub issues, writes the code, and opens PRs.
 
 ```
-CEO (you)
-  "Build JWT auth with refresh tokens"
-    └─ 2IC          → breaks directive into workstreams
-        └─ Eng Lead  → designs architecture, defines tasks
-            └─ Team Lead → creates GitHub issues, invokes engineers
-                └─ Engineers (parallel) → write code, open PRs
+Human
+  ↓ "Build JWT auth with refresh tokens"
+AI Assistant (Claude Code)
+  ↓ delegates to Echelon
+Echelon Organization
+  ├─ 2IC          → breaks directive into workstreams
+  ├─ Eng Lead     → designs architecture, defines tasks
+  ├─ Team Lead    → creates GitHub issues, invokes engineers
+  └─ Engineers    → write code in parallel, open PRs
+    ↓ reports progress
+AI Assistant (Claude Code)
+  ↓ "Your team is working on 3 issues..."
+Human
 ```
+
+## For AI Agents
+
+Echelon is infrastructure for AI systems that need to delegate complex, multi-step engineering work:
+
+- **Claude Code Integration** — Install Echelon once, then just talk to Claude Code. Claude acts as CEO, delegating to Echelon's management layers.
+- **MCP Server Ready** — Expose Echelon as an MCP tool for any AI assistant. Stream progress events back to conversations.
+- **API-First Design** — Spawn cascades, monitor status, kill subprocesses. Full programmatic control.
+- **Event Streaming** — Real-time progress updates via MessageBus. AI can monitor and report to users continuously.
+
+**Example (Claude Code internal):**
+```typescript
+// User: "Fix all the bugs in the dashboard"
+// Claude Code delegates:
+await echelon.runCascade({
+  directive: "Fix all dashboard bugs",
+  monitoring: "continuous",
+  reportToUser: true
+});
+// Claude monitors and updates user: "Your team created 4 issues. 2 PRs are ready for review..."
+```
+
+## For Humans
+
+While designed for AI-to-AI orchestration, Echelon works standalone too:
+
+- **Direct CLI** — Run `echelon` in any git repo for autonomous project execution
+- **Interactive Mode** — Terminal UI with org chart, live feed, and approval gates
+- **Full Control** — Approval modes, budget limits, timeout configs—everything is tunable
 
 No agents to configure. No prompt chains to debug. One command.
 
@@ -805,6 +843,11 @@ The documentation covers:
 
 Issues and PRs are welcome. This is early-stage software &mdash; expect rough edges.
 
+For AI integration developers:
+- See [ARCHITECTURE.md](ARCHITECTURE.md) for MessageBus event streaming
+- Check `src/core/orchestrator.ts` for programmatic API usage
+- Review `src/lib/types.ts` for all event and action schemas
+
 ```bash
 # Development
 npm run dev -- -d "your directive" --headless
@@ -818,4 +861,12 @@ npm run docs:api
 
 ## License
 
-[MIT](LICENSE) &copy; Venin Client Systems
+[MIT](LICENSE) &copy; 2026 Venin Client Systems
+
+---
+
+<p align="center">
+  <strong>Silent infrastructure that "just works"</strong><br/>
+  Built by <a href="https://venin.space">VENIN</a> (George Atkinson & Claude Opus 4.6)<br/>
+  Designed for AI-to-AI orchestration
+</p>
