@@ -447,12 +447,13 @@ export class Scheduler {
         slot.startedAt = new Date().toISOString();
 
         try {
-          // Create worktree
+          // Create worktree with timestamp-based suffix to guarantee uniqueness
+          // This prevents "already used by worktree" errors from incomplete cleanup
           const wt = await createWorktree(
             this.config.project.path,
             this.config.project.baseBranch,
             slot.issueNumber,
-            `${slugify(slot.issueTitle)}-${attempt}`,
+            `${slugify(slot.issueTitle)}-${attempt}-${Date.now()}`,
           );
           slot.branchName = wt.branch;
           slot.worktreePath = wt.path;
