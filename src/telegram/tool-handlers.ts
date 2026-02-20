@@ -35,6 +35,7 @@ function getOrchestrator(config: EchelonConfig): Orchestrator {
       resume: !!state,
       verbose: false,
       telegram: true,
+      dashboard: false,
       yolo: false,
     },
     state: state ?? undefined,

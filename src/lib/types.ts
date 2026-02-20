@@ -207,6 +207,12 @@ export const TelegramConfigSchema = z.object({
   allowedUserIds: z.array(z.number().int()).default([]),
   health: TelegramHealthConfigSchema.optional(),
 });
+
+export const DashboardConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  port: z.number().int().min(1).max(65535).default(3030),
+});
+
 /**
  * Root Echelon configuration schema.
  *
@@ -227,6 +233,7 @@ export const EchelonConfigSchema = z.object({
   maxTotalBudgetUsd: z.number().positive().default(50.0),
   maxCascadeDurationMs: z.number().positive().default(1_800_000),
   telegram: TelegramConfigSchema.optional(),
+  dashboard: DashboardConfigSchema.optional(),
   billing: z.enum(['api', 'max']).default('api'),
 });
 
@@ -242,6 +249,8 @@ export type EngineersConfig = z.infer<typeof EngineersConfigSchema>;
 export type TelegramHealthConfig = z.infer<typeof TelegramHealthConfigSchema>;
 /** @category Configuration */
 export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
+/** @category Configuration */
+export type DashboardConfig = z.infer<typeof DashboardConfigSchema>;
 
 // --- GitHub Rate Limiting ---
 
@@ -483,6 +492,7 @@ export interface CliOptions {
   resume: boolean;
   verbose: boolean;
   telegram: boolean;
+  dashboard: boolean;
   approvalMode?: EchelonConfig['approvalMode'];
   yolo: boolean;
 }

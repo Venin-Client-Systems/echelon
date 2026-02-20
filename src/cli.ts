@@ -20,6 +20,7 @@ function addRunOptions(cmd: Command): Command {
     .option('-v, --verbose', 'Enable debug logging', false)
     .option('--approval-mode <mode>', 'Override approval mode (destructive, all, none)')
     .option('--telegram', 'Start in Telegram bot mode', false)
+    .option('--dashboard', 'Enable dashboard server', false)
     .option('--yolo', 'Full autonomous mode — no approvals, no permission prompts', false);
 }
 
@@ -35,6 +36,7 @@ function toRunResult(cmd: Command): CliResult {
       resume: opts.resume as boolean,
       verbose: opts.verbose as boolean,
       telegram: opts.telegram as boolean,
+      dashboard: opts.dashboard as boolean,
       approvalMode: opts.approvalMode as 'none' | 'destructive' | 'all' | undefined,
       yolo: opts.yolo as boolean,
     },
